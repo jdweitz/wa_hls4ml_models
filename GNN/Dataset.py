@@ -14,7 +14,7 @@ class FPGAGraphDataset(Dataset):
     Each sample is a neural network represented as a graph, where nodes are layers
     and edges represent the flow of data between layers.
     """
-    def __init__(self, features_path, labels_path, transform=None, pre_transform=None, stats= None):
+    def __init__(self, features_path, labels_path, transform=None, pre_transform=None, stats=None):
         super(FPGAGraphDataset, self).__init__(None, transform, pre_transform) # root=None as we load from numpy
         print(f"Loading features from: {features_path}")
         self.features_np = np.load(features_path)
@@ -62,23 +62,23 @@ class FPGAGraphDataset(Dataset):
         self.num_activation_types = len(self.activation_mapping_provided)        # Should be 6 (0-5)
         self.num_padding_types = len(self.padding_mapping_provided)   # Should be 3 (0-2)
 
-
         # Specific indices for easier access
         self.strategy_idx = self.feature_indices_map["strategy"]
         self.layer_type_idx = self.feature_indices_map["layer_type"]
         self.activation_type_idx = self.feature_indices_map["activation_type"]
         self.padding_idx = self.feature_indices_map["padding"]
 
-        # Calculate and store normalization statistics (mean and std)
+        # Calculate and store normalization statistics (mean and std) for both features and labels
         if stats:
-            self.means, self.stds = stats
+            self.feature_means, self.feature_stds, self.label_means, self.label_stds = stats
             print("Using provided normalization statistics.")
         else:
             print("Calculating normalization statistics from the dataset...")
-            self.means, self.stds = self._calculate_normalization_stats()
-            print(f"Computed Means: {self.means}")
-            print(f"Computed Stds: {self.stds}")
-
+            self.feature_means, self.feature_stds, self.label_means, self.label_stds = self._calculate_normalization_stats()
+            print(f"Computed Feature Means: {self.feature_means}")
+            print(f"Computed Feature Stds: {self.feature_stds}")
+            print(f"Computed Label Means: {self.label_means}")
+            print(f"Computed Label Stds: {self.label_stds}")
 
         # Total node feature dimension after processing
         self.node_feature_dim = (self.num_numerical_features +
@@ -87,16 +87,25 @@ class FPGAGraphDataset(Dataset):
                                  self.num_padding_types)
         print(f"Processed node feature dimension will be: {self.node_feature_dim}")
 
+
     def _calculate_normalization_stats(self):
         """
-        Calculates mean and std for numerical features across the entire dataset
+        Calculates mean and std for numerical features and labels across the entire dataset
         """
         # Accumulator for numerical values for each feature
         numerical_values_accumulator = [[] for _ in range(self.num_numerical_features)]
+        
+        # Accumulator for labels
+        label_values_accumulator = []
 
         print("Iterating through dataset to compute normalization stats...")
         for model_idx in tqdm(range(self.features_np.shape[0]), desc="Calculating Stats"): #iterating through all models
             model_features = self.features_np[model_idx] # (max_layers, num_raw_features)
+            model_labels = self.labels_np[model_idx] # (num_targets,)
+            
+            # Collect labels
+            label_values_accumulator.append(model_labels)
+            
             for layer_idx in range(model_features.shape[0]):
                 layer_data = model_features[layer_idx]
 
@@ -108,27 +117,35 @@ class FPGAGraphDataset(Dataset):
                 for i, feature_col_idx in enumerate(self.numerical_feature_indices.tolist()):
                     val = layer_data[feature_col_idx]
                     # Only accumulate valid numerical values for stats calculation
-                    # (i.e., not -1 if -1 can mean "not applicable" within a valid layer's numerical feature)
                     if val != -1:
                         numerical_values_accumulator[i].append(val)
 
-        
-        means = []
-        stds = []
+        # Calculate feature statistics
+        feature_means = []
+        feature_stds = []
         for i, vals in enumerate(numerical_values_accumulator):
             if vals: # if list is not empty
-                means.append(np.mean(vals))
+                feature_means.append(np.mean(vals))
                 std_val = np.std(vals)
-                stds.append(std_val if std_val > 1e-5 else 1.0) # Avoid division by zero or very small std
+                feature_stds.append(std_val if std_val > 1e-5 else 1.0) # Avoid division by zero or very small std
             else:
-                # This case means no valid data points were found for this feature across the dataset.
-                # Highly unlikely for all features if the dataset is well-formed.
                 num_feat_original_idx = self.numerical_feature_indices[i].item()
                 print(f"Warning: No valid data points found for numerical feature '{self.numerical_feature_keys[i]}' (original index {num_feat_original_idx}). Using default mean=0, std=1.")
-                means.append(0.0)
-                stds.append(1.0)
+                feature_means.append(0.0)
+                feature_stds.append(1.0)
 
-        return torch.tensor(means, dtype=torch.float), torch.tensor(stds, dtype=torch.float)
+        # Calculate label statistics
+        all_labels = np.vstack(label_values_accumulator)  # (num_samples, num_targets)
+        label_means = np.mean(all_labels, axis=0)
+        label_stds = np.std(all_labels, axis=0)
+        
+        # Avoid division by zero for label stds
+        label_stds = np.where(label_stds > 1e-5, label_stds, 1.0)
+
+        return (torch.tensor(feature_means, dtype=torch.float), 
+                torch.tensor(feature_stds, dtype=torch.float),
+                torch.tensor(label_means, dtype=torch.float),
+                torch.tensor(label_stds, dtype=torch.float))
 
     def _one_hot_encode(self, raw_value, num_classes):
         """
@@ -167,8 +184,10 @@ class FPGAGraphDataset(Dataset):
         
         # Save means and stds as a dictionary
         stats_dict = {
-            'means': self.means.numpy(),
-            'stds': self.stds.numpy(),
+            'feature_means': self.feature_means.numpy(),
+            'feature_stds': self.feature_stds.numpy(),
+            'label_means': self.label_means.numpy(),
+            'label_stds': self.label_stds.numpy(),
             'feature_keys': self.numerical_feature_keys  # Save keys for verification
         }
         
@@ -186,18 +205,26 @@ class FPGAGraphDataset(Dataset):
             filepath: Path to the saved statistics file
             
         Returns:
-            tuple: (means, stds) as torch tensors
+            tuple: (feature_means, feature_stds, label_means, label_stds) as torch tensors
         """
         stats_dict = np.load(filepath, allow_pickle=True).item()
         
         # Convert numpy arrays to torch tensors
-        means = torch.tensor(stats_dict['means'], dtype=torch.float)
-        stds = torch.tensor(stats_dict['stds'], dtype=torch.float)
+        feature_means = torch.tensor(stats_dict['feature_means'], dtype=torch.float)
+        feature_stds = torch.tensor(stats_dict['feature_stds'], dtype=torch.float)
+        label_means = torch.tensor(stats_dict['label_means'], dtype=torch.float)
+        label_stds = torch.tensor(stats_dict['label_stds'], dtype=torch.float)
         
         #Print the loaded feature keys for verification
         print(f"Loaded statistics for features: {stats_dict['feature_keys']}")
         
-        return means, stds
+        return feature_means, feature_stds, label_means, label_stds
+    
+    def denormalize_labels(self, normalized_labels):
+        """
+        Denormalize labels using the stored statistics
+        """
+        return normalized_labels * self.label_stds + self.label_means
 
     def get(self, idx):
         """
@@ -230,9 +257,9 @@ class FPGAGraphDataset(Dataset):
                 val = current_numerical_feats_raw[j]
                 if val == -1.0: # If -1 signifies 'not applicable' for this specific numerical feature
                     # Normalize 0.0 instead. This means "not applicable" maps to a specific value relative to the distribution.
-                    numerical_feats_processed[j] = (0.0 - self.means[j]) / self.stds[j]
+                    numerical_feats_processed[j] = (0.0 - self.feature_means[j]) / self.feature_stds[j]
                 else:
-                    numerical_feats_processed[j] = (val - self.means[j]) / self.stds[j]
+                    numerical_feats_processed[j] = (val - self.feature_means[j]) / self.feature_stds[j]
             
             # 2. Categorical Features (One-Hot Encoded)
             # Values are assumed to be integer codes already present in the numpy array.
@@ -272,14 +299,13 @@ class FPGAGraphDataset(Dataset):
             edge_index = torch.empty((2, 0), dtype=torch.long)
         
         # Labels (graph-level targets)
-        # y = torch.tensor(model_labels, dtype=torch.float)
-        y = torch.tensor(model_labels, dtype=torch.float).unsqueeze(0) # Ensures shape [1, 6]
+        labels_tensor = torch.tensor(model_labels, dtype=torch.float)
+        normalized_labels = (labels_tensor - self.label_means) / self.label_stds
+        y = normalized_labels.unsqueeze(0) # Ensures shape [1, num_targets]
 
         # Create PyG Data object
         data = Data(x=x, edge_index=edge_index, y=y)
-        # data.strategy = torch.tensor([strategy_val], dtype=torch.float) # Store as a tensor for batching
         data.strategy = torch.tensor([strategy_val], dtype=torch.float).unsqueeze(1)
-        # data.num_nodes = num_valid_nodes # PyG Data object automatically has num_nodes attribute from x
 
         return data
     
@@ -305,7 +331,7 @@ def create_dataloaders(feature_path, labels_path,
         pin_memory (bool): If True, DataLoaders will copy Tensors into CUDA pinned memory.
 
     Returns:
-        tuple: (train_loader, val_loader, test_loader, node_feature_dim, num_targets)
+        tuple: (train_loader, val_loader, test_loader, dataset, node_feature_dim, num_targets)
     """
     import numpy as np
     import os
@@ -327,8 +353,8 @@ def create_dataloaders(feature_path, labels_path,
     if stats_load_path and os.path.exists(stats_load_path):
         try:
             print(f"Attempting to load normalization stats from: {stats_load_path}")
-            means, stds = FPGAGraphDataset.load_normalization_stats(stats_load_path)
-            initial_stats = (means, stds)
+            feature_means, feature_stds, label_means, label_stds = FPGAGraphDataset.load_normalization_stats(stats_load_path)
+            initial_stats = (feature_means, feature_stds, label_means, label_stds)
             print("Successfully loaded normalization stats.")
         except Exception as e:
             print(f"Warning: Could not load stats from {stats_load_path}: {e}. Stats will be recalculated.")
@@ -401,9 +427,11 @@ def create_dataloaders(feature_path, labels_path,
                 )
                 
                 # Extract the calculated stats
-                means = temp_dataset.means
-                stds = temp_dataset.stds
-                initial_stats = (means, stds)
+                feature_means = temp_dataset.feature_means
+                feature_stds = temp_dataset.feature_stds
+                label_means = temp_dataset.label_means
+                label_stds = temp_dataset.label_stds
+                initial_stats = (feature_means, feature_stds, label_means, label_stds)
                 
                 # Save the stats if requested
                 if stats_save_path:
@@ -438,9 +466,23 @@ def create_dataloaders(feature_path, labels_path,
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                                 num_workers=num_workers, pin_memory=pin_memory)
 
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
+                            num_workers=num_workers, pin_memory=pin_memory)
+
+    return train_loader, val_loader, test_loader, full_dataset, node_feature_dim, num_targets
 
 
-    return train_loader, val_loader, test_loader, node_feature_dim, num_targets
 
 
+# Usage example:
+# train_loader, val_loader, test_loader, dataset, node_feature_dim, num_targets = create_dataloaders(
+#     feature_path=FEATURES_PATH,
+#     labels_path=LABELS_PATH,
+#     stats_load_path=STATS_PATH, # Load if exists
+#     stats_save_path=STATS_PATH, # Save if calculated on training set
+#     batch_size=BATCH_SIZE,
+#     train_val_test_split=(0.7, 0.15, 0.15), # Example split
+#     random_seed=42,
+#     num_workers=0, # Adjust based on your system
+#     pin_memory=True if device.type == 'cuda' else False
+# )
