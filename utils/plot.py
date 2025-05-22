@@ -179,5 +179,92 @@ def plot_results(
         os.makedirs(directory)
     pio.write_html(fig, file=os.path.join(directory, f"{name}_outputs.html"), auto_open=False)
 
+
+def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, folder_name):
+    """
+    Simplified version of plot_results that doesn't require X_raw_test.
+    Creates basic scatter plots without strategy-based grouping.
+    """
+    colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'orange']
+
+    if mpl_plots:
+        for i, feature in enumerate(output_features):
+            plt.figure(figsize=(8, 6))
+            plt.scatter(y_test[:, i], y_pred[:, i], s=20, label=feature, color=colors[i % len(colors)], alpha=0.7)
+            plt.title('Actual vs Predicted for ' + feature)
+            plt.xlabel('Actual Value')
+            plt.ylabel('Predicted Value')
+            plt.legend()
+            vmin = min(np.min(y_test[:, i]), np.min(y_pred[:, i]))
+            vmax = max(np.max(y_test[:, i]), np.max(y_pred[:, i]))
+            plt.plot([vmin, vmax], [vmin, vmax], 'r--')
+            plt.tight_layout()
+            directory = os.path.join(folder_name, "plots")
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            plt.savefig(os.path.join(directory, feature + '_predicted_vs_true.png'))
+            plt.close()
+
+    # Interactive plotly subplots
+    n_features = len(output_features)
+    n_cols = 2
+    n_rows = int(np.ceil(n_features / n_cols))
+    fig = sp.make_subplots(
+        rows=n_rows, cols=n_cols,
+        vertical_spacing=0.05, horizontal_spacing=0.05,
+        x_title='Actual Value',
+        y_title='Predicted Value',
+        subplot_titles=output_features,
+    )
+
+    overall_min = min(np.min(y_test), np.min(y_pred))
+    overall_max = max(np.max(y_test), np.max(y_pred))
+
+    for i in range(n_features):
+        row = i // n_cols + 1
+        col = i % n_cols + 1
+        
+        # Simple scatter plot without strategy grouping
+        scatter = go.Scatter(
+            x=y_test[:, i],
+            y=y_pred[:, i],
+            mode='markers',
+            name=f'{output_features[i]}',
+            marker=dict(
+                color=colors[i % len(colors)],
+                size=6,
+                opacity=0.7,
+            ),
+            hovertemplate=
+                '<i>Actual</i>: %{x}<br>' +
+                '<b>Predicted</b>: %{y}<br><extra></extra>',
+        )
+        fig.add_trace(scatter, row=row, col=col)
+
+        # Perfect prediction line
+        fig.add_trace(
+            go.Scatter(
+                x=[overall_min, overall_max],
+                y=[overall_min, overall_max],
+                mode='lines',
+                line=dict(color='black', dash='dash'),
+                showlegend=False
+            ),
+            row=row, col=col
+        )
+
+    fig.update_layout(
+        height=380 * n_rows,
+        width=800,
+        title='Actual vs Predicted (all outputs)',
+        legend=dict(font=dict(size=13))
+    )
+
+    directory = os.path.join(folder_name, "plots", "scatterplots")
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    pio.write_html(fig, file=os.path.join(directory, f"{name}_outputs.html"), auto_open=False)
+
+
 ## To use:
 # from plot import plot_loss, plot_box_plots_symlog, plot_results
