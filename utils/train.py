@@ -71,6 +71,15 @@ def calculate_metrics(y_true, y_pred):
     print(f'R-squared (R2 Score): {r2:.4f}')
     return dict(smape=smape, mae=mae, mse=mse, rmse=rmse, r2=r2)
 
+def calculate_metrics_per_feature(y_true, y_pred, output_features=None):
+    n_outputs = y_true.shape[1]
+    metrics_dict = {}
+    for i in range(n_outputs):
+        print(f"\n--- Metrics for {output_features[i] if output_features else f'Feature {i}'} ---")
+        metrics = calculate_metrics(y_true[:, i], y_pred[:, i])
+        metrics_dict[output_features[i] if output_features else f'Feature_{i}'] = metrics
+    return metrics_dict
+
 ## To use:
 # from train import train_model, test_model, calculate_metrics
 

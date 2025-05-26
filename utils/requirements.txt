@@ -5,6 +5,8 @@ matplotlib==3.10.1
 plotly==6.0.0
 pandas==2.2.3
 
+# need to add torch_geometric
+
 ## for notebooks (uncomment the below):
 # jupyterlab==4.2.1
 # ipykernel==6.29.5

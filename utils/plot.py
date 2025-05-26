@@ -24,7 +24,8 @@ def plot_loss(train_losses, val_losses, outdir="results/plots"):
 def plot_box_plots_symlog(y_pred, y_test, folder_name):
     # Current order of columns: ["WorstLatency_hls", "IntervalMax_hls", "FF_hls", "LUT_hls", "BRAM_18K_hls", "DSP_hls"]
     # Want this order: BRAM, DSP, FF, LUT, CYCLES, II
-    prediction_labels =  ['BRAM', 'DSP', 'FF', 'LUT', 'CYCLES', 'II']
+    # prediction_labels =  ['BRAM', 'DSP', 'FF', 'LUT', 'CYCLES', 'II']
+    prediction_labels = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
     # indices in y_pred/y_test for: BRAM(4), DSP(5), FF(2), LUT(3), CYCLES(0), II(1)
     plot_order = [4, 5, 2, 3, 0, 1] # Rework this to make more general
 
