@@ -308,22 +308,100 @@ class FPGAGraphDataset(Dataset):
         data.strategy = torch.tensor([strategy_val], dtype=torch.float).unsqueeze(1)
 
         return data
+
+
+def save_split_mapping(filepath, train_indices, val_indices, test_indices, 
+                      total_samples, train_val_test_split, random_seed):
+    """
+    Save the dataset split mapping to a file for reproducible splits.
     
+    Args:
+        filepath (str): Path to save the split mapping file
+        train_indices (list): Training indices
+        val_indices (list): Validation indices  
+        test_indices (list): Test indices
+        total_samples (int): Total number of samples in dataset
+        train_val_test_split (tuple): Split ratios used
+        random_seed (int): Random seed used for splitting
+    """
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Create mapping dictionary
+    split_mapping = {
+        'train_indices': np.array(train_indices, dtype=np.int32),
+        'val_indices': np.array(val_indices, dtype=np.int32),
+        'test_indices': np.array(test_indices, dtype=np.int32),
+        'total_samples': total_samples,
+        'train_val_test_split': train_val_test_split,
+        'random_seed': random_seed,
+        'train_size': len(train_indices),
+        'val_size': len(val_indices),
+        'test_size': len(test_indices)
+    }
+    
+    # Save to file
+    np.save(filepath, split_mapping)
+    print(f"Split mapping saved to {filepath}")
+    print(f"  Train: {len(train_indices)} samples")
+    print(f"  Val: {len(val_indices)} samples") 
+    print(f"  Test: {len(test_indices)} samples")
+
+
+def load_split_mapping(filepath):
+    """
+    Load dataset split mapping from a file.
+    
+    Args:
+        filepath (str): Path to the split mapping file
+        
+    Returns:
+        tuple: (train_indices, val_indices, test_indices, metadata_dict)
+    """
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"Split mapping file not found: {filepath}")
+    
+    split_mapping = np.load(filepath, allow_pickle=True).item()
+    
+    train_indices = split_mapping['train_indices'].tolist()
+    val_indices = split_mapping['val_indices'].tolist() 
+    test_indices = split_mapping['test_indices'].tolist()
+    
+    metadata = {
+        'total_samples': split_mapping['total_samples'],
+        'train_val_test_split': split_mapping['train_val_test_split'],
+        'random_seed': split_mapping['random_seed'],
+        'train_size': split_mapping['train_size'],
+        'val_size': split_mapping['val_size'],
+        'test_size': split_mapping['test_size']
+    }
+    
+    print(f"Loaded split mapping from {filepath}")
+    print(f"  Train: {len(train_indices)} samples")
+    print(f"  Val: {len(val_indices)} samples")
+    print(f"  Test: {len(test_indices)} samples")
+    print(f"  Original split ratios: {metadata['train_val_test_split']}")
+    print(f"  Random seed used: {metadata['random_seed']}")
+    
+    return train_indices, val_indices, test_indices, metadata
 
 
 def create_dataloaders(feature_path, labels_path,
                        stats_load_path=None, stats_save_path=None,
+                       split_mapping_path=None,
                        batch_size=32, train_val_test_split=(0.7, 0.15, 0.15),
                        random_seed=42, num_workers=0, pin_memory=True):
     """
     Creates train, validation, and test DataLoaders for the FPGAGraphDataset.
     Handles loading or calculating normalization statistics ONLY from training data.
+    Supports saving/loading dataset splits for reproducibility across different environments.
 
     Args:
         feature_path (str): Path to the features .npy file.
         labels_path (str): Path to the labels .npy file.
         stats_load_path (str, optional): Path to load pre-calculated normalization stats (.npy).
         stats_save_path (str, optional): Path to save newly calculated normalization stats (.npy).
+        split_mapping_path (str, optional): Path to save/load dataset split mapping (.npy).
         batch_size (int): Batch size for DataLoaders.
         train_val_test_split (tuple): Ratios for train, validation, test splits. Must sum to 1.0.
         random_seed (int): Random seed for shuffling and splitting.
@@ -348,6 +426,76 @@ def create_dataloaders(feature_path, labels_path,
     num_samples = full_features.shape[0]
     print(f"Loaded dataset with {num_samples} samples")
     
+    # Handle dataset splitting - either load existing split or create new one
+    if split_mapping_path and os.path.exists(split_mapping_path):
+        # Load existing split mapping
+        print(f"Loading existing split mapping from: {split_mapping_path}")
+        train_indices, val_indices, test_indices, split_metadata = load_split_mapping(split_mapping_path)
+        
+        # Validate that the split is compatible with current dataset
+        if split_metadata['total_samples'] != num_samples:
+            raise ValueError(f"Split mapping was created for {split_metadata['total_samples']} samples, "
+                           f"but current dataset has {num_samples} samples")
+        
+        # Check if all indices are valid
+        all_indices = set(train_indices + val_indices + test_indices)
+        if max(all_indices) >= num_samples or min(all_indices) < 0:
+            raise ValueError("Split mapping contains invalid indices for current dataset")
+            
+        print("Successfully loaded and validated existing split mapping")
+        
+    else:
+        # Create new split
+        print("Creating new dataset split...")
+        indices = list(range(num_samples))
+        
+        train_ratio, val_ratio, test_ratio = train_val_test_split
+        if not np.isclose(train_ratio + val_ratio + test_ratio, 1.0):
+            raise ValueError(f"Train, validation, and test ratios must sum to 1.0. Got: {train_ratio+val_ratio+test_ratio}")
+
+        # First split: training and temporary (validation + test)
+        train_indices, temp_indices = train_test_split(
+            indices,
+            train_size=train_ratio,
+            random_state=random_seed,
+            shuffle=True
+        )
+
+        # Second split: validation and test from temporary
+        # Calculate the proportion of the validation set relative to the temp set
+        if (val_ratio + test_ratio) == 0:  # Avoid division by zero if val and test are 0
+            if val_ratio == 0 and test_ratio == 0:
+                val_indices = []
+                test_indices = []
+            else:  # This case should ideally not happen if sum is 1 and train_ratio < 1
+                raise ValueError("val_ratio + test_ratio is 0, but individual ratios might not be.")
+        else:
+            val_relative_ratio = val_ratio / (val_ratio + test_ratio)
+            if len(temp_indices) > 0:  # only split if temp_indices is not empty
+                val_indices, test_indices = train_test_split(
+                    temp_indices,
+                    train_size=val_relative_ratio,  # train_size here means size of the first returned list (val_indices)
+                    random_state=random_seed,  # Use same seed for consistent split of this subset
+                    shuffle=True
+                )
+            else:  # if temp_indices is empty, val and test are also empty
+                val_indices, test_indices = [], []
+
+        print(f"Dataset split: {len(train_indices)} train, {len(val_indices)} validation, {len(test_indices)} test samples.")
+        
+        # Save the split mapping if path is provided
+        if split_mapping_path:
+            print(f"Saving split mapping to: {split_mapping_path}")
+            save_split_mapping(
+                filepath=split_mapping_path,
+                train_indices=train_indices,
+                val_indices=val_indices, 
+                test_indices=test_indices,
+                total_samples=num_samples,
+                train_val_test_split=train_val_test_split,
+                random_seed=random_seed
+            )
+    
     # Check if we can use pre-calculated statistics
     initial_stats = None
     if stats_load_path and os.path.exists(stats_load_path):
@@ -359,43 +507,6 @@ def create_dataloaders(feature_path, labels_path,
         except Exception as e:
             print(f"Warning: Could not load stats from {stats_load_path}: {e}. Stats will be recalculated.")
             initial_stats = None
-    
-    # Split dataset indices - always do this to ensure consistent splitting
-    indices = list(range(num_samples))
-    
-    train_ratio, val_ratio, test_ratio = train_val_test_split
-    if not np.isclose(train_ratio + val_ratio + test_ratio, 1.0):
-        raise ValueError(f"Train, validation, and test ratios must sum to 1.0. Got: {train_ratio+val_ratio+test_ratio}")
-
-    # First split: training and temporary (validation + test)
-    train_indices, temp_indices = train_test_split(
-        indices,
-        train_size=train_ratio,
-        random_state=random_seed,
-        shuffle=True
-    )
-
-    # Second split: validation and test from temporary
-    # Calculate the proportion of the validation set relative to the temp set
-    if (val_ratio + test_ratio) == 0:  # Avoid division by zero if val and test are 0
-        if val_ratio == 0 and test_ratio == 0:
-            val_indices = []
-            test_indices = []
-        else:  # This case should ideally not happen if sum is 1 and train_ratio < 1
-            raise ValueError("val_ratio + test_ratio is 0, but individual ratios might not be.")
-    else:
-        val_relative_ratio = val_ratio / (val_ratio + test_ratio)
-        if len(temp_indices) > 0:  # only split if temp_indices is not empty
-            val_indices, test_indices = train_test_split(
-                temp_indices,
-                train_size=val_relative_ratio,  # train_size here means size of the first returned list (val_indices)
-                random_state=random_seed,  # Use same seed for consistent split of this subset
-                shuffle=True
-            )
-        else:  # if temp_indices is empty, val and test are also empty
-            val_indices, test_indices = [], []
-
-    print(f"Dataset split: {len(train_indices)} train, {len(val_indices)} validation, {len(test_indices)} test samples.")
     
     # If we need to calculate statistics, do it only on training data
     if initial_stats is None:
@@ -480,6 +591,7 @@ def create_dataloaders(feature_path, labels_path,
 #     labels_path=LABELS_PATH,
 #     stats_load_path=STATS_PATH, # Load if exists
 #     stats_save_path=STATS_PATH, # Save if calculated on training set
+#     split_mapping_path='data_splits/dataset_split_mapping.npy', # Save/load split mapping
 #     batch_size=BATCH_SIZE,
 #     train_val_test_split=(0.7, 0.15, 0.15), # Example split
 #     random_seed=42,

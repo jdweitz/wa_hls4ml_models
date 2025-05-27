@@ -109,6 +109,8 @@ class ModelProcessor:
         # Define label columns for resource metrics
         # self.label_columns = ["cycles_max", "ff", "lut", "bram", "dsp"]
         self.label_columns = ["cycles_max", "ff", "lut", "bram", "dsp", "interval_max"]
+        
+
     
     def has_valid_resource_report(self, file_path: str) -> bool:
         """Quickly check if a JSON file contains non-empty resource report.
