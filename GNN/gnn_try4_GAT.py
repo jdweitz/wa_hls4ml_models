@@ -8,8 +8,11 @@ import matplotlib.pyplot as plt
 import os
 
 from Models import FPGA_GNN_GATv2, FPGA_GNN_GATv2_Enhanced
-from Dataset2 import create_dataloaders
-from Utils import generate_all_plots
+from Dataset import create_dataloaders
+from Utils import generate_all_plots, calculate_metrics
+
+
+
 
 # Configuration
 FEATURES_PATH = 'May_15_processed/combined_features.npy'
@@ -18,10 +21,17 @@ LABELS_PATH = 'May_15_processed/combined_labels.npy'
 STATS_PATH = 'May_15_processed/calculated_TrainingOnly_norm_May26.npy'
 SPLIT_MAPPING_PATH = 'May_15_processed/dataset_split_mapping_May26.npy'  # NEW: Add split mapping path
 
+image_data_path = '../../app/'
+
+FEATURES_PATH = os.path.join(image_data_path, FEATURES_PATH)
+LABELS_PATH = os.path.join(image_data_path, LABELS_PATH)
+STATS_PATH = os.path.join(image_data_path, STATS_PATH)
+SPLIT_MAPPING_PATH = os.path.join(image_data_path, SPLIT_MAPPING_PATH)
+
 
 # Training configuration
 BATCH_SIZE = 2048
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 5e-3
 NUM_EPOCHS = 750
 WEIGHT_DECAY = 5e-6
 
@@ -99,62 +109,7 @@ def evaluate(model, data_loader, criterion, device, dataset, denormalize=True):
     avg_loss = total_loss / num_batches
     return avg_loss, all_predictions, all_targets
 
-def calculate_metrics(predictions, targets, feature_names=None):
-    """Calculate various regression metrics."""
-    metrics = {}
-    
-    # Overall metrics
-    mae = torch.mean(torch.abs(predictions - targets))
-    mse = torch.mean((predictions - targets) ** 2)
-    rmse = torch.sqrt(mse)
-    mape = torch.mean(torch.abs((targets - predictions) / (targets + 1e-8))) * 100
-    
-    # SMAPE (Symmetric Mean Absolute Percentage Error)
-    smape = torch.mean(torch.abs(predictions - targets) / ((torch.abs(predictions) + torch.abs(targets)) / 2 + 1e-8)) * 100
-    
-    # R² (Coefficient of determination)
-    ss_res = torch.sum((targets - predictions) ** 2)
-    ss_tot = torch.sum((targets - torch.mean(targets)) ** 2)
-    r2 = 1 - (ss_res / (ss_tot + 1e-8))
-    
-    metrics['overall'] = {
-        'MAE': mae.item(),
-        'MSE': mse.item(),
-        'RMSE': rmse.item(),
-        'MAPE': mape.item(),
-        'SMAPE': smape.item(),
-        'R2': r2.item()
-    }
-    
-    # Per-feature metrics if feature names provided
-    if feature_names is not None:
-        metrics['per_feature'] = {}
-        for i, name in enumerate(feature_names):
-            feat_mae = torch.mean(torch.abs(predictions[:, i] - targets[:, i]))
-            feat_mse = torch.mean((predictions[:, i] - targets[:, i]) ** 2)
-            feat_rmse = torch.sqrt(feat_mse)
-            feat_mape = torch.mean(torch.abs((targets[:, i] - predictions[:, i]) / 
-                                           (targets[:, i] + 1e-8))) * 100
-            
-            # Per-feature SMAPE
-            feat_smape = torch.mean(torch.abs(predictions[:, i] - targets[:, i]) / 
-                                  ((torch.abs(predictions[:, i]) + torch.abs(targets[:, i])) / 2 + 1e-8)) * 100
-            
-            # Per-feature R²
-            feat_ss_res = torch.sum((targets[:, i] - predictions[:, i]) ** 2)
-            feat_ss_tot = torch.sum((targets[:, i] - torch.mean(targets[:, i])) ** 2)
-            feat_r2 = 1 - (feat_ss_res / (feat_ss_tot + 1e-8))
-            
-            metrics['per_feature'][name] = {
-                'MAE': feat_mae.item(),
-                'MSE': feat_mse.item(),
-                'RMSE': feat_rmse.item(),
-                'MAPE': feat_mape.item(),
-                'SMAPE': feat_smape.item(),
-                'R2': feat_r2.item()
-            }
-    
-    return metrics
+
 
 def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False):
     print(f"\nUsing Enhanced GATv2 model: {use_enhanced_model}")
@@ -248,7 +203,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
     patience_counter = 0
     early_stopping_patience = 25
     
-    # feature_names = ['CYCLES', 'II', 'FF', 'LUT', 'BRAM', 'DSP']
+    # Define feature names
     feature_names = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
 
     # for epoch in range(NUM_EPOCHS):   
@@ -318,26 +273,33 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
     print("FINAL EVALUATION - GATv2 Model")
     print("="*50)
 
-    # Test set evaluation
+    # Test set evaluation - UPDATED: Now uses calculate_metrics function consistently
     test_loss_norm, test_pred, test_targets = evaluate(
         model, test_loader, criterion, device, dataset, denormalize=True
     )
     test_metrics = calculate_metrics(test_pred, test_targets, feature_names)
     
+    # Display test metrics in organized format
     print(f"\nTest Set Metrics (denormalized):")
     print(f"Overall Metrics:")
     for metric, value in test_metrics['overall'].items():
-        print(f"  {metric}: {value:.4f}")
+        if metric in ['MAPE', 'SMAPE']:
+            print(f"  {metric}: {value:.2f}%")
+        else:
+            print(f"  {metric}: {value:.4f}")
     
     print(f"\nPer-Feature Metrics:")
     for feature, metrics in test_metrics['per_feature'].items():
         print(f"\n{feature}:")
         for metric, value in metrics.items():
-            print(f"  {metric}: {value:.4f}")
+            if metric in ['MAPE', 'SMAPE']:
+                print(f"  {metric}: {value:.2f}%")
+            else:
+                print(f"  {metric}: {value:.4f}")
 
-    # 7. Generate all plots
+    # 7. Generate all plots - UPDATED: Now returns plot_metrics for consistency checking
     print("\nGenerating plots...")
-    generate_all_plots(
+    plot_metrics = generate_all_plots(
         model=model,
         dataset=dataset,
         train_loader=train_loader,
@@ -348,7 +310,20 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         device=device
     )
 
-    # 8. Save final model
+    # # Optional: Verify that plot metrics match test metrics (for debugging)
+    # print("\nVerifying metric consistency...")
+    # overall_match = True
+    # for metric_name in ['MAE', 'RMSE', 'MAPE', 'R2']:
+    #     test_val = test_metrics['overall'][metric_name]
+    #     plot_val = plot_metrics['overall'][metric_name]
+    #     if abs(test_val - plot_val) > 1e-6:
+    #         print(f"Warning: {metric_name} mismatch - Test: {test_val:.6f}, Plot: {plot_val:.6f}")
+    #         overall_match = False
+    
+    # if overall_match:
+    #     print("✓ All metrics match between test evaluation and plot generation")
+
+    # 8. Save final model - UPDATED: Include plot_metrics in saved data
     final_model_path = f'{output_dir}/final_gatv2_model.pth'
     torch.save({
         'model_state_dict': model.state_dict(),
@@ -369,7 +344,9 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
             'weight_decay': WEIGHT_DECAY
         },
         'best_val_loss': best_val_loss,
-        'test_metrics': test_metrics
+        'test_metrics': test_metrics,
+        'plot_metrics': plot_metrics,  # NEW: Also save the metrics from plot generation
+        'feature_names': feature_names  # NEW: Save feature names for reference
     }, final_model_path)
     print(f"\nModel saved to: {final_model_path}")
 
@@ -377,5 +354,21 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
 
 
 if __name__ == "__main__":
-    model, dataset, train_losses, val_losses, test_metrics = train_gatv2_gnn(output_dir= 'results/May_24_day/run2_GAT_enhanced', use_enhanced_model=True)
-    # model, dataset, train_losses, val_losses, test_metrics = train_gatv2_gnn(output_dir= 'results/May_22_day/run3_GAT/', use_enhanced_model=False)
+
+    folder_name = 'results/May_24_day/run2_GAT_enhanced'
+
+    #if results folder doesn't exist, create it
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+
+    # UPDATED: Now captures the returned metrics from the updated generate_all_plots function
+    model, dataset, train_losses, val_losses, test_metrics = train_gatv2_gnn(
+        output_dir='results/May_24_day/run2_GAT_enhanced', 
+        use_enhanced_model=True
+    )
+    
+    # Optional: You can also run the standard model for comparison
+    # model, dataset, train_losses, val_losses, test_metrics = train_gatv2_gnn(
+    #     output_dir='results/May_22_day/run3_GAT/', 
+    #     use_enhanced_model=False
+    # )
