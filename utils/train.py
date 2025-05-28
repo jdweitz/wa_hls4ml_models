@@ -3,15 +3,29 @@
 import torch
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import numpy as np
+import os
 
 def train_model(
-    model, train_loader, val_loader, optimizer, loss_fn, device, num_epochs=10, verbose=True
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    loss_fn,
+    device,
+    num_epochs=10,
+    verbose=True,
+    checkpoint_path: str = None,
 ):
+    best_val = float('inf')
     train_losses = []
     val_losses = []
 
+    # make sure checkpoint dir exists
+    if checkpoint_path is not None:
+        os.makedirs(checkpoint_path, exist_ok=True)
+
     for epoch in range(1, num_epochs + 1):
-        # Training loop
+        # Training
         model.train()
         train_loss = 0.0
         for feats, pad_mask, labels in train_loader:
@@ -25,7 +39,7 @@ def train_model(
         train_loss /= len(train_loader.dataset)
         train_losses.append(train_loss)
 
-        # Validation loop
+        # Validation
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -38,6 +52,14 @@ def train_model(
 
         if verbose:
             print(f"Epoch {epoch:2d} — Train Loss: {train_loss:.4f} | Validation Loss: {val_loss:.4f}")
+
+        # Checkpoint if validation improved
+        if checkpoint_path is not None and val_loss < best_val:
+            best_val = val_loss
+            ckpt_file = os.path.join(checkpoint_path, "model.pt")
+            torch.save(model.state_dict(), ckpt_file)
+            if verbose:
+                print(f"  ↳ New best model (val={val_loss:.4f}), saved to {ckpt_file}")
 
     return train_losses, val_losses
 
