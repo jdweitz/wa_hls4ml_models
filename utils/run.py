@@ -20,11 +20,11 @@ def main():
     # data_dir = "../../../../ddemler/dima_stuff/wa_remake/May_15_processed"
     # max_samples = 100000 # Do a small set for testing the process
     # batch_size = 512
-    num_epochs = 2
+    num_epochs = 10
     learning_rate = 1e-4
     # output_features = ["WorstLatency_hls", "IntervalMax_hls", "FF_hls", "LUT_hls", "BRAM_18K_hls", "DSP_hls"]
     output_features = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
-    outdir = "results_and_plots/5_29_TESTING1"
+    outdir = "results_and_plots/5_30_actual_10_epochs"
     # outdir = "testing_all_output_features"
 
     # # Data
@@ -36,24 +36,37 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # FEATURES_PATH = '../../../../ddemler/dima_stuff/wa_gnn/May_15_processed/combined_features.npy'
-    # LABELS_PATH = '../../../../ddemler/dima_stuff/wa_gnn/May_15_processed/combined_labels.npy'
-
-    FEATURES_PATH = '../dataset/output/May_29_complete/combined_features.npy'
-    LABELS_PATH = '../dataset/output/May_29_complete/combined_labels.npy'
+    # FEATURES_PATH = '../dataset/output/May_29_complete/combined_features.npy'
+    # LABELS_PATH = '../dataset/output/May_29_complete/combined_labels.npy'
 
     # STATS_PATH = 'stats/stats.npy'
 
     #SPLIT_MAPPING_PATH = '../../../../ddemler/dima_stuff/wa_gnn/May_15_processed/dataset_split_mapping_May26.npy'  # NEW: Add split mapping path
+
+
+    # Configuration
+    FEATURES_PATH = 'combined_features.npy'
+    LABELS_PATH = 'combined_labels.npy'
+    STATS_PATH = 'calculated_TrainingOnly_norm_May26.npy'
+    # STATS_PATH = './calculated_TrainingOnly_norm_May26.npy'
+    SPLIT_MAPPING_PATH = 'dataset_split_mapping_May26.npy'  # NEW: Add split mapping path
+
+    # image_data_path = '../../app/'
+    image_data_path = '/app/dataset/May_29_complete/'
+
+    FEATURES_PATH = os.path.join(image_data_path, FEATURES_PATH)
+    LABELS_PATH = os.path.join(image_data_path, LABELS_PATH)
+    STATS_PATH = os.path.join(image_data_path, STATS_PATH)
+    SPLIT_MAPPING_PATH = os.path.join(image_data_path, SPLIT_MAPPING_PATH)
 
     BATCH_SIZE = 1024 # tried 512 and plots seemed fine, but with 2048 got a divide by zero (has to do with other stuff though)
 
     train_loader, val_loader, test_loader, dataset, node_feature_dim, num_targets = create_dataloaders(
             feature_path=FEATURES_PATH,
             labels_path=LABELS_PATH,
-            #stats_load_path=STATS_PATH,
+            stats_load_path=STATS_PATH,
             stats_save_path=None,
-            #split_mapping_path=SPLIT_MAPPING_PATH,  # NEW: Add this parameter
+            split_mapping_path=SPLIT_MAPPING_PATH,  # NEW: Add this parameter
             batch_size=BATCH_SIZE,
             train_val_test_split=(0.7, 0.15, 0.15),
             random_seed=42,

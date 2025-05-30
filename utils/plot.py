@@ -32,6 +32,7 @@ def plot_box_plots_symlog(y_pred, y_test, folder_name):
     prediction_errors = []
     for i in plot_order:
         errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i]) * 100 # removed +1 in the denominator
+        # errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i] +1e-5) * 100 # removed +1 in the denominator # added this, see 5_30_results_10_epochs to see the shifted boxplot though
         prediction_errors.append(errors)
 
     plt.rcParams.update({"font.size": 16})
