@@ -32,13 +32,15 @@ class FPGAGraphDataset(Dataset):
             "prec": 6, "rf": 7, "strategy": 8,
             "layer_type": 9, "activation_type": 10,
             "filters": 11, "kernel_size": 12,
-            "stride": 13, "padding": 14, "pooling": 15
+            "stride": 13, "padding": 14, "pooling": 15,
+            "batchnorm": 16, "io_type": 17
         }
 
         # Define numerical feature keys
         self.numerical_feature_keys = [
             "d_in1", "d_in2", "d_in3", "d_out1", "d_out2", "d_out3",
-            "prec", "rf", "filters", "kernel_size", "stride", "pooling"
+            "prec", "rf", "filters", "kernel_size", "stride", "pooling",
+            "batchnorm", "io_type"
         ]
         # Get integer indices for numerical features
         self.numerical_feature_indices = torch.tensor(
