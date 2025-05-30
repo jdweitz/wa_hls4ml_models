@@ -24,7 +24,7 @@ def main():
     learning_rate = 1e-4
     # output_features = ["WorstLatency_hls", "IntervalMax_hls", "FF_hls", "LUT_hls", "BRAM_18K_hls", "DSP_hls"]
     output_features = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
-    outdir = "results_and_plots/5_28_TESTING4"
+    outdir = "results_and_plots/5_29_TESTING1"
     # outdir = "testing_all_output_features"
 
     # # Data
@@ -39,8 +39,8 @@ def main():
     # FEATURES_PATH = '../../../../ddemler/dima_stuff/wa_gnn/May_15_processed/combined_features.npy'
     # LABELS_PATH = '../../../../ddemler/dima_stuff/wa_gnn/May_15_processed/combined_labels.npy'
 
-    FEATURES_PATH = '../dataset/output/May_28_all_try2/combined_features.npy'
-    LABELS_PATH = '../dataset/output/May_28_all_try2/combined_labels.npy'
+    FEATURES_PATH = '../dataset/output/May_29_complete/combined_features.npy'
+    LABELS_PATH = '../dataset/output/May_29_complete/combined_labels.npy'
 
     # STATS_PATH = 'stats/stats.npy'
 

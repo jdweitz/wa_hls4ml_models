@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 class LayerTokenizer(nn.Module):
-    def __init__(self, feature_dim: int = 34, embed_dim: int = 512, max_layers: int = 128):
+    def __init__(self, feature_dim: int = 35, embed_dim: int = 512, max_layers: int = 128):
         """
         Maps per-layer features to token embeddings with learned positional embeddings and a [CLS] token.
         """
@@ -27,7 +27,7 @@ class LayerTokenizer(nn.Module):
 class TransformerRegressor(nn.Module):
     def __init__(
         self,
-        feature_dim: int = 34, #changed from 32, bc now have 2 more features
+        feature_dim: int = 35, #changed from 32, bc now have 2 more features
         embed_dim: int = 512,
         num_heads: int = 8,
         ff_dim: int = 512,

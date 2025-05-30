@@ -932,18 +932,29 @@ if __name__ == "__main__":
     # ]
 
     folder_paths = [
-        "2_20/",
-        "2layer/2layer",
+        #"2_20/",
+        #"2layer/2layer",
         # "3layer_fixed/3layer_run_vsynth_2023-2_updated",
-        "3layer_fixed/3layer",
+        #"3layer_fixed/3layer",
         "conv/conv1d/",
         "conv/conv2d/",
-        "strategy/latency",
-        "strategy/resource"
+        #"strategy/latency",
+        #"strategy/resource"
     ]
+
+    # folder_paths = [
+    #     "2_20/",
+    #     "2layer/2layer",
+    #     # "3layer_fixed/3layer_run_vsynth_2023-2_updated",
+    #     "3layer_fixed/3layer",
+    #     "conv/conv1d/",
+    #     "conv/conv2d/",
+    #     "strategy/latency",
+    #     "strategy/resource"
+    # ]
     # output_dir = "./May_28_processed_newest_dataset_with_iotype_latency_only/"
 
-    output_dir = "output/May_29_complete/"
+    output_dir = "output/May_29_CONV_ONLY/"
     
     # Process folders and save combined numpy arrays (skip CSV files)
     X_path, y_path = processor.process_folders(
