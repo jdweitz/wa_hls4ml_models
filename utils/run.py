@@ -20,11 +20,11 @@ def main():
     # data_dir = "../../../../ddemler/dima_stuff/wa_remake/May_15_processed"
     # max_samples = 100000 # Do a small set for testing the process
     # batch_size = 512
-    num_epochs = 10
+    num_epochs = 2
     learning_rate = 1e-4
     # output_features = ["WorstLatency_hls", "IntervalMax_hls", "FF_hls", "LUT_hls", "BRAM_18K_hls", "DSP_hls"]
     output_features = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
-    outdir = "results_and_plots/5_30_actual_10_epochs"
+    outdir = "results_and_plots/5_30_results_2_epochs"
     # outdir = "testing_all_output_features"
 
     # # Data
@@ -70,7 +70,7 @@ def main():
             batch_size=BATCH_SIZE,
             train_val_test_split=(0.7, 0.15, 0.15),
             random_seed=42,
-            num_workers=5,
+            num_workers=4, # dropped from 5
             pin_memory=True if device.type == 'cuda' else False
         )
 
