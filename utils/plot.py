@@ -31,8 +31,8 @@ def plot_box_plots_symlog(y_pred, y_test, folder_name):
 
     prediction_errors = []
     for i in plot_order:
-        errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i]) * 100 # removed +1 in the denominator
-        # errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i] +1e-5) * 100 # removed +1 in the denominator # added this, see 5_30_results_10_epochs to see the shifted boxplot though
+        # errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i]) * 100 # removed +1 in the denominator
+        errors = (y_test[:, i] - y_pred[:, i]) / (y_test[:, i] +1) * 100 # +1 as done in the original plotting
         prediction_errors.append(errors)
 
     plt.rcParams.update({"font.size": 16})
@@ -60,6 +60,13 @@ def plot_box_plots_symlog(y_pred, y_test, folder_name):
         ax.spines.top.set_visible(False)
         ax.xaxis.tick_bottom()
         ax.set_yscale('symlog', linthresh=1)
+
+        # Find the max absolute value for symmetric limits
+        max_abs = np.nanmax(np.abs(errors))
+        ax.set_ylim(-max_abs, max_abs)
+        # Add horizontal zero line
+        ax.axhline(0, color='black', linestyle='--', linewidth=1)
+
     median_line = Line2D([0], [0], color="orange", linestyle="--", linewidth=1.5, label="Median")
     mean_line = Line2D([0], [0], color="green", linestyle="--", linewidth=1.5, label="Mean")
     handles = [median_line, mean_line]
