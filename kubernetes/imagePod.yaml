@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dd-wa-data-image-pod
+spec:
+  containers:
+  - name: dd-mypod
+    # image: gitlab-registry.nrp-nautilus.io/dimademler/nac_image:latest  #Change this to the correct new image
+    image: gitlab-registry.nrp-nautilus.io/dimademler/wa-dataset:latest  #Change this to the correct new image
+    command: ["/bin/bash"]
+    args: ["-c", "apt-get update && apt-get install -y vim nano git && sleep infinity"]
+    resources:
+      limits:
+          memory: 6Gi
+          cpu: 4
+      requests:
+          memory: 5Gi
+          cpu: 4
+    volumeMounts:
+    - mountPath: /dima-pvc
+      name: dima-pvc
+  volumes:
+    - name: dima-pvc
+      persistentVolumeClaim:
+        claimName: pvc2-dmitridemler
