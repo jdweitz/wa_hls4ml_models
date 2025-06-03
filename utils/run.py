@@ -22,7 +22,7 @@ def main():
 
     timestamp = datetime.now().strftime("%m_%d_%H_%M")
 
-    num_epochs = 20
+    num_epochs = 300
     learning_rate = 1e-4
     BATCH_SIZE = 1024 
 
@@ -58,7 +58,8 @@ def main():
     #         pin_memory=True if device.type == 'cuda' else False
     #     )
 
-    base_dir = "../dataset/output/split_dataset/result/result/"  # UPDATE FOR THE JOB WITH NEW PATH
+    # base_dir = "../dataset/output/split_dataset/result/result/"  # UPDATE FOR THE JOB WITH NEW PATH
+    base_dir = "/jason-pvc/june_wa-hls4ml/result/" # IN THE PVC
 
     train_loader, val_loader, test_loader, node_feature_dim, num_targets = create_dataloaders_from_split_data(
             train_features_path=os.path.join(base_dir, "train_features.npy"),
