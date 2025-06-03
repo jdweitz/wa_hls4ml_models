@@ -153,67 +153,28 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         log_epsilon=LOG_EPSILON                # Add this line
     )
     
-    # Load stats for denormalization dataset instance
-    loaded_log_shift_val = None # Initialize
-    stats_for_denorm_dataset = None # Initialize
-
-    if os.path.exists(STATS_PATH):
-        # This load_normalization_stats returns 7 values:
-        # fm, fs, lm, ls, use_log, log_eps, log_shift
-        loaded_stats_tuple = FPGAGraphDataset.load_normalization_stats(STATS_PATH)
-        
-        if len(loaded_stats_tuple) == 7:  # Current expected format
-            fm, fs, lm, ls, _, _, loaded_log_shift_val = loaded_stats_tuple
-            stats_for_denorm_dataset = (fm, fs, lm, ls)
-        elif len(loaded_stats_tuple) == 6:  # Older format (if load_normalization_stats was the commented one)
-            fm, fs, lm, ls, _, _ = loaded_stats_tuple
-            stats_for_denorm_dataset = (fm, fs, lm, ls)
-            # loaded_log_shift_val might be set to LOG_EPSILON or remain None,
-            # depending on desired behavior if stats file is from an older version.
-            # The FPGAGraphDataset.__init__ handles log_shift=None by calculating it.
-        elif len(loaded_stats_tuple) == 4: # Very old format (only the four stats values)
-            stats_for_denorm_dataset = loaded_stats_tuple
-            # loaded_log_shift_val will remain None
-        else:
-            # Or, if stats must exist and be in a known format:
-            raise ValueError(f"Loaded stats from {STATS_PATH} has an unexpected number of items: {len(loaded_stats_tuple)}")
-            # Alternatively, could fall back to recalculating, but the current script structure expects to load them here.
-
-    else:
-        # The original code raises FileNotFoundError, which is fine.
-        # If stats must exist:
-        raise FileNotFoundError(f"Stats file not found at {STATS_PATH}, which is required for the denormalization dataset.")
-
-    # Create a dataset object for denormalization purposes (line 169)
-    # Pass the correctly extracted 4-tuple 'stats_for_denorm_dataset'
-    # Also, pass the 'loaded_log_shift_val' if USE_LOG_TRANSFORM is True
-    dataset = FPGAGraphDataset(
-        TRAIN_FEATURES_PATH, TRAIN_LABELS_PATH,
-        stats=stats_for_denorm_dataset, # This will now be a 4-tuple
-        use_log_transform=USE_LOG_TRANSFORM,
-        log_epsilon=LOG_EPSILON,
-        log_shift=loaded_log_shift_val if USE_LOG_TRANSFORM else None # Pass the loaded log_shift
-    )
-    #----------------------------------
     
-    # # Load or calculate stats for denormalization
-    # if os.path.exists(STATS_PATH):
-    #     loaded_stats = FPGAGraphDataset.load_normalization_stats(STATS_PATH)
-    #     if len(loaded_stats) == 6:  # New format with log transform info
-    #         feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon = loaded_stats
-    #         stats = (feature_means, feature_stds, label_means, label_stds)
-    #     else:  # Old format
-    #         stats = loaded_stats
-    # else:
-    #     raise FileNotFoundError(f"Stats file not found: {STATS_PATH}")
 
-    # # Create a dataset object for denormalization purposes
-    # dataset = FPGAGraphDataset(
-    #     TRAIN_FEATURES_PATH, TRAIN_LABELS_PATH, 
-    #     stats=stats, 
-    #     use_log_transform=USE_LOG_TRANSFORM, 
-    #     log_epsilon=LOG_EPSILON
-    # )
+    #
+    
+    # Load or calculate stats for denormalization
+    if os.path.exists(STATS_PATH):
+        loaded_stats = FPGAGraphDataset.load_normalization_stats(STATS_PATH)
+        if len(loaded_stats) == 6:  # New format with log transform info
+            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon = loaded_stats
+            stats = (feature_means, feature_stds, label_means, label_stds)
+        else:  # Old format
+            stats = loaded_stats
+    else:
+        raise FileNotFoundError(f"Stats file not found: {STATS_PATH}")
+
+    # Create a dataset object for denormalization purposes
+    dataset = FPGAGraphDataset(
+        TRAIN_FEATURES_PATH, TRAIN_LABELS_PATH, 
+        stats=stats, 
+        use_log_transform=USE_LOG_TRANSFORM, 
+        log_epsilon=LOG_EPSILON
+    )
     
     print(f"DataLoaders created successfully")
     print(f"Node feature dimension: {node_feature_dim}")
