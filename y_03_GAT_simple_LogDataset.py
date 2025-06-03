@@ -37,10 +37,10 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 2048
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 10
+NUM_EPOCHS = 500
 WEIGHT_DECAY = 5e-6
 
-GNN_HIDDEN_DIM = 96
+GNN_HIDDEN_DIM = 128
 GNN_NUM_LAYERS = 4
 NUM_ATTENTION_HEADS = 4
 MLP_HIDDEN_DIM = 160
@@ -55,9 +55,9 @@ STATS_PATH = './results/normalization_stats_log.npy' if USE_LOG_TRANSFORM else '
 
 
 # Before running training
-if os.path.exists(STATS_PATH):
-    os.remove(STATS_PATH)
-    print(f"Deleted old stats file: {STATS_PATH}")
+# if os.path.exists(STATS_PATH):
+#     os.remove(STATS_PATH)
+#     print(f"Deleted old stats file: {STATS_PATH}")
 
 def train_epoch(model, train_loader, optimizer, criterion, device):
     """Train the model for one epoch."""
@@ -143,8 +143,8 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         val_labels_path=VAL_LABELS_PATH,
         test_features_path=TEST_FEATURES_PATH,
         test_labels_path=TEST_LABELS_PATH,
-        # stats_load_path=STATS_PATH if os.path.exists(STATS_PATH) else None,
-        stats_load_path= None,
+        stats_load_path=STATS_PATH if os.path.exists(STATS_PATH) else None,
+        # stats_load_path= None,
         stats_save_path=STATS_PATH,
         batch_size=BATCH_SIZE,
         num_workers=5,
@@ -336,21 +336,35 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
             patience_counter += 1
         
         # Print progress
+        # if epoch % 1 == 0 or epoch == NUM_EPOCHS - 1:
+        #     current_lr = optimizer.param_groups[0]['lr']
+        #     print(f"Epoch {epoch:3d}: Train Loss = {train_loss:.6e}, Val Loss = {val_loss:.6e}, LR = {current_lr:.6e}")
+
+        # if epoch % 2 == 0 or epoch == NUM_EPOCHS - 1:
+        #     test_loss_norm, test_pred, test_targets = evaluate(
+        #         model, test_loader, criterion, device, dataset, denormalize=True
+        #     )
+        #     test_loss = test_loss_norm.item() if isinstance(test_loss_norm, torch.Tensor) else test_loss_norm
+        #     print(f"\n     Epoch {epoch:3d} - Test Loss (denormalized): {test_loss:.6e}")
+        #     test_metrics = calculate_metrics(test_pred, test_targets, feature_names)
+
+        #     # Format overall metrics with scientific notation
+        #     overall_formatted = {k: f"{v:.4e}" for k, v in test_metrics['overall'].items()}
+        #     print(f"     overall metrics: {overall_formatted}")
         if epoch % 1 == 0 or epoch == NUM_EPOCHS - 1:
             current_lr = optimizer.param_groups[0]['lr']
             print(f"Epoch {epoch:3d}: Train Loss = {train_loss:.6e}, Val Loss = {val_loss:.6e}, LR = {current_lr:.6e}")
 
-        if epoch % 2 == 0 or epoch == NUM_EPOCHS - 1:
+        # Test reports every 5 epochs
+        if epoch % 5 == 0 or epoch == NUM_EPOCHS - 1:
             test_loss_norm, test_pred, test_targets = evaluate(
                 model, test_loader, criterion, device, dataset, denormalize=True
             )
             test_loss = test_loss_norm.item() if isinstance(test_loss_norm, torch.Tensor) else test_loss_norm
-            print(f"\n     Epoch {epoch:3d} - Test Loss (denormalized): {test_loss:.6e}")
+            print(f"    --> TEST Epoch {epoch:3d} - Test Loss (denormalized): {test_loss:.4e}")
             test_metrics = calculate_metrics(test_pred, test_targets, feature_names)
-
-            # Format overall metrics with scientific notation
-            overall_formatted = {k: f"{v:.4e}" for k, v in test_metrics['overall'].items()}
-            print(f"     overall metrics: {overall_formatted}")
+            overall_formatted = {k: f"{v:.3e}" for k, v in test_metrics['overall'].items()}
+            print(f"    --> overall metrics: {overall_formatted}")
         
         # Early stopping
         if patience_counter >= early_stopping_patience:
