@@ -390,9 +390,12 @@ def create_dataloaders_from_split_data(
     Returns:
         tuple: (train_loader, val_loader, test_loader, node_feature_dim, num_targets)
     """
+
+    # Initialize stats to None - this fixes the UnboundLocalError
+    stats = None
+    log_shift = None  # Also initialize log_shift
     
     # Handle normalization statistics
-    # In create_dataloaders_from_split_data function
     if stats_load_path and os.path.exists(stats_load_path):
         print(f"Loading existing normalization stats from: {stats_load_path}")
         loaded_stats = FPGAGraphDataset.load_normalization_stats(stats_load_path)
@@ -404,7 +407,7 @@ def create_dataloaders_from_split_data(
                 stats = None
             else:
                 stats = (feature_means, feature_stds, label_means, label_stds)
-                # Need to pass log_shift to the datasets somehow
+                log_shift = loaded_log_shift
                 print("Successfully loaded normalization stats with log transform info.")
         else:
             print("Incomplete stats format. Recalculating...")
@@ -419,6 +422,7 @@ def create_dataloaders_from_split_data(
         )
         stats = (train_dataset_temp.feature_means, train_dataset_temp.feature_stds,
                 train_dataset_temp.label_means, train_dataset_temp.label_stds)
+        log_shift = train_dataset_temp.log_shift
         
         # Save stats if requested
         if stats_save_path:
@@ -429,15 +433,18 @@ def create_dataloaders_from_split_data(
     print("Creating datasets with shared normalization statistics...")
     train_dataset = FPGAGraphDataset(
         train_features_path, train_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+        stats=stats, use_log_transform=use_log_transform, 
+        log_epsilon=log_epsilon, log_shift=log_shift
     )
     val_dataset = FPGAGraphDataset(
         val_features_path, val_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+        stats=stats, use_log_transform=use_log_transform, 
+        log_epsilon=log_epsilon, log_shift=log_shift
     )
     test_dataset = FPGAGraphDataset(
         test_features_path, test_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+        stats=stats, use_log_transform=use_log_transform, 
+        log_epsilon=log_epsilon, log_shift=log_shift
     )
     
     # Get dataset info
