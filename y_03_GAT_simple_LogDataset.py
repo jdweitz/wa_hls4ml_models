@@ -14,7 +14,7 @@ from Utils import generate_all_plots, calculate_metrics, save_metrics_to_file
 
 
 #!!!!!! CHANGE THIS FOLDER NAME TO YOUR OWN FOLDER NAME !!!!!!!#
-SAVE_FOLDERNAME = 'results/y_02_GAT_simple_LogDataset'
+SAVE_FOLDERNAME = 'results/y_03_GAT_simple_LogDataset'
 # CHANGE THIS FOLDER NAME TO YOUR OWN FOLDER NAME !!!!!!!#
 
 # Extract the part after the first '/' for folder_base
@@ -35,12 +35,12 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 
 # Training configuration
 BATCH_SIZE = 2048
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 3e-3
 NUM_EPOCHS = 400
 WEIGHT_DECAY = 5e-6
 
 GNN_HIDDEN_DIM = 96
-GNN_NUM_LAYERS = 3
+GNN_NUM_LAYERS = 4
 NUM_ATTENTION_HEADS = 4
 MLP_HIDDEN_DIM = 160
 DROPOUT_RATE = 0.3
@@ -225,7 +225,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         optimizer, 
         mode='min',
         factor=0.5,
-        patience=8,
+        patience=7,
         min_lr=1e-7,
         verbose=True,
         threshold=1e-4,
@@ -291,6 +291,16 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         if epoch % 1 == 0 or epoch == NUM_EPOCHS - 1:
             current_lr = optimizer.param_groups[0]['lr']
             print(f"Epoch {epoch:3d}: Train Loss = {train_loss:.6e}, Val Loss = {val_loss:.6e}, LR = {current_lr:.6e}")
+
+        if epoch % 10 == 0 or epoch == NUM_EPOCHS - 1:
+            test_loss_norm, test_pred, test_targets = evaluate(
+                model, test_loader, criterion, device, dataset, denormalize=True
+            )
+            test_loss = test_loss_norm.item() if isinstance(test_loss_norm, torch.Tensor) else test_loss_norm
+            print(f"\n     Epoch {epoch:3d} - Test Loss (denormalized): {test_loss:.6e}")
+            test_metrics = calculate_metrics(test_pred, test_targets, feature_names)
+
+            print(f"     overall metrics: {test_metrics['overall']}")
         
         # Early stopping
         if patience_counter >= early_stopping_patience:
