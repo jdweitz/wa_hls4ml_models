@@ -3,8 +3,15 @@
 # --- Configuration ---
 POD_NAME="dd-probe-pod"
 # CONTAINER_NAME="dd-mypod" # Optional, but good practice if multiple containers exist
-REMOTE_BASE_PATH="/dima-pvc/wa-dd-prediction-model/results"
-LOCAL_DEST_BASE_PATH="/Users/dimademler/Desktop/UCSD/labs/wa-dd-prediction-model/results"
+
+#older
+# REMOTE_BASE_PATH="/dima-pvc/wa-dd-prediction-model/results"
+# LOCAL_DEST_BASE_PATH="/Users/dimademler/Desktop/UCSD/labs/wa-dd-prediction-model/results"
+
+# newer
+REMOTE_BASE_PATH="/dima-pvc/wa_hls4ml_models/results"
+LOCAL_DEST_BASE_PATH="/Users/dimademler/Desktop/UCSD/labs/wa_datasetRemake_mulder_down/gitlab_wa_hls4ml_models/results"
+
 
 
 

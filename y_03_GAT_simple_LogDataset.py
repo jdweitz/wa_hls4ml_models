@@ -37,7 +37,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 2048
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 400
+NUM_EPOCHS = 5 #TODO: change this back
 WEIGHT_DECAY = 5e-6
 
 GNN_HIDDEN_DIM = 96

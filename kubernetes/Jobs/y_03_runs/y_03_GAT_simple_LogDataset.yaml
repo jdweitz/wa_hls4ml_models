@@ -22,7 +22,8 @@ spec:
                 - "NVIDIA-GeForce-RTX-3090"
       containers:
       - name: pytorch-gpu-container
-        image: gitlab-registry.nrp-nautilus.io/dimademler/wa-dataset:latest  
+        # image: gitlab-registry.nrp-nautilus.io/dimademler/wa-dataset:latest  
+        image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime  
         command: ["/bin/bash", "-c"]
         args:
           - |
