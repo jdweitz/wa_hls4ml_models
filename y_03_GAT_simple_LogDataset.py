@@ -37,7 +37,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 2048
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 500
+NUM_EPOCHS = 10
 WEIGHT_DECAY = 5e-6
 
 GNN_HIDDEN_DIM = 96
@@ -167,12 +167,14 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
             stats_for_denorm_dataset = (fm, fs, lm, ls)
         elif len(loaded_stats_tuple) == 6:  # Older format (if load_normalization_stats was the commented one)
             fm, fs, lm, ls, _, _ = loaded_stats_tuple
+            print(f"Warning: Loaded stats from {STATS_PATH} has 6 items, expected 7. Assuming no log transform.")
             stats_for_denorm_dataset = (fm, fs, lm, ls)
             # loaded_log_shift_val might be set to LOG_EPSILON or remain None,
             # depending on desired behavior if stats file is from an older version.
             # The FPGAGraphDataset.__init__ handles log_shift=None by calculating it.
         elif len(loaded_stats_tuple) == 4: # Very old format (only the four stats values)
             stats_for_denorm_dataset = loaded_stats_tuple
+            print(f"Warning: Loaded stats from {STATS_PATH} has 4 items, expected 7. Assuming no log transform.")
             # loaded_log_shift_val will remain None
         else:
             # Or, if stats must exist and be in a known format:
@@ -338,7 +340,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
             current_lr = optimizer.param_groups[0]['lr']
             print(f"Epoch {epoch:3d}: Train Loss = {train_loss:.6e}, Val Loss = {val_loss:.6e}, LR = {current_lr:.6e}")
 
-        if epoch % 10 == 0 or epoch == NUM_EPOCHS - 1:
+        if epoch % 2 == 0 or epoch == NUM_EPOCHS - 1:
             test_loss_norm, test_pred, test_targets = evaluate(
                 model, test_loader, criterion, device, dataset, denormalize=True
             )
@@ -346,7 +348,9 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
             print(f"\n     Epoch {epoch:3d} - Test Loss (denormalized): {test_loss:.6e}")
             test_metrics = calculate_metrics(test_pred, test_targets, feature_names)
 
-            print(f"     overall metrics: {test_metrics['overall']}")
+            # Format overall metrics with scientific notation
+            overall_formatted = {k: f"{v:.4e}" for k, v in test_metrics['overall'].items()}
+            print(f"     overall metrics: {overall_formatted}")
         
         # Early stopping
         if patience_counter >= early_stopping_patience:
