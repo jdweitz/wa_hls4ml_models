@@ -23,7 +23,8 @@ SAVE_FOLDERNAME = 'results/y_03_GAT_simple_LogDataset'
 
 
 
-image_data_path = '/app/dataset/Full_dataset_processed_split/'
+# image_data_path = '/app/dataset/Full_dataset_processed_split/'
+image_data_path = '/dima-pvc/wa_hls4ml_models/dataset/Full_dataset_processed_split/'
 
 TRAIN_FEATURES_PATH = os.path.join(image_data_path, 'train_features.npy')
 TRAIN_LABELS_PATH = os.path.join(image_data_path, 'train_labels.npy')
