@@ -14,7 +14,7 @@ class FPGAGraphDataset(Dataset):
     and edges represent the flow of data between layers.
     """
     def __init__(self, features_path, labels_path, transform=None, pre_transform=None, 
-                 stats=None, use_log_transform=False, log_epsilon=1e-6):
+                 stats=None, use_log_transform=False, log_epsilon=1e-6, log_shift=None):
         super(FPGAGraphDataset, self).__init__(None, transform, pre_transform) # root=None as we load from numpy
         print(f"Loading features from: {features_path}")
         self.features_np = np.load(features_path)
@@ -85,9 +85,13 @@ class FPGAGraphDataset(Dataset):
         # Add this as a class attribute
         self.log_shift = 0.0  # Initialize
 
-        # Apply log transformation to labels if requested
         if self.use_log_transform:
-            self.labels_np = self._apply_log_transform(self.labels_np)
+            if log_shift is not None:
+                self.log_shift = log_shift
+                # Apply log transform with the provided shift
+                self.labels_np = np.log(self.labels_np + self.log_shift)
+            else:
+                self.labels_np = self._apply_log_transform(self.labels_np)
 
         # Calculate and store normalization statistics (mean and std) for both features and labels
         if stats:
@@ -226,6 +230,7 @@ class FPGAGraphDataset(Dataset):
         np.save(filepath, stats_dict)
         print(f"Normalization statistics saved to {filepath}")
 
+    # In Dataset3LogNorm.py, keep only this version:
     @staticmethod
     def load_normalization_stats(filepath):
         """Load normalization statistics from a file"""
@@ -241,27 +246,27 @@ class FPGAGraphDataset(Dataset):
         # Return transformation settings along with stats
         use_log_transform = stats_dict.get('use_log_transform', False)
         log_epsilon = stats_dict.get('log_epsilon', 1e-6)
-        log_shift = stats_dict.get('log_shift', log_epsilon)  # Default to epsilon for backward compatibility
+        log_shift = stats_dict.get('log_shift', log_epsilon)
         
         return feature_means, feature_stds, label_means, label_stds, use_log_transform, log_epsilon, log_shift
     
-    @staticmethod
-    def load_normalization_stats(filepath):
-        """Load normalization statistics from a file"""
-        stats_dict = np.load(filepath, allow_pickle=True).item()
+    # @staticmethod
+    # def load_normalization_stats(filepath):
+    #     """Load normalization statistics from a file"""
+    #     stats_dict = np.load(filepath, allow_pickle=True).item()
         
-        feature_means = torch.tensor(stats_dict['feature_means'], dtype=torch.float)
-        feature_stds = torch.tensor(stats_dict['feature_stds'], dtype=torch.float)
-        label_means = torch.tensor(stats_dict['label_means'], dtype=torch.float)
-        label_stds = torch.tensor(stats_dict['label_stds'], dtype=torch.float)
+    #     feature_means = torch.tensor(stats_dict['feature_means'], dtype=torch.float)
+    #     feature_stds = torch.tensor(stats_dict['feature_stds'], dtype=torch.float)
+    #     label_means = torch.tensor(stats_dict['label_means'], dtype=torch.float)
+    #     label_stds = torch.tensor(stats_dict['label_stds'], dtype=torch.float)
         
-        print(f"Loaded statistics for features: {stats_dict['feature_keys']}")
+    #     print(f"Loaded statistics for features: {stats_dict['feature_keys']}")
         
-        # Return transformation settings along with stats
-        use_log_transform = stats_dict.get('use_log_transform', False)
-        log_epsilon = stats_dict.get('log_epsilon', 1e-6)
+    #     # Return transformation settings along with stats
+    #     use_log_transform = stats_dict.get('use_log_transform', False)
+    #     log_epsilon = stats_dict.get('log_epsilon', 1e-6)
         
-        return feature_means, feature_stds, label_means, label_stds, use_log_transform, log_epsilon
+    #     return feature_means, feature_stds, label_means, label_stds, use_log_transform, log_epsilon
     
     def denormalize_labels(self, normalized_labels):
         """Denormalize labels using the stored statistics"""
@@ -387,24 +392,23 @@ def create_dataloaders_from_split_data(
     """
     
     # Handle normalization statistics
+    # In create_dataloaders_from_split_data function
     if stats_load_path and os.path.exists(stats_load_path):
         print(f"Loading existing normalization stats from: {stats_load_path}")
         loaded_stats = FPGAGraphDataset.load_normalization_stats(stats_load_path)
-        if len(loaded_stats) == 6:  # New format with log transform info
-            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon = loaded_stats
+        if len(loaded_stats) == 7:  # Complete format with log_shift
+            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon, loaded_log_shift = loaded_stats
             if loaded_use_log != use_log_transform:
                 print(f"Warning: Loaded log transform setting ({loaded_use_log}) differs from requested ({use_log_transform})")
                 print("Using requested setting and recalculating stats...")
                 stats = None
             else:
                 stats = (feature_means, feature_stds, label_means, label_stds)
+                # Need to pass log_shift to the datasets somehow
                 print("Successfully loaded normalization stats with log transform info.")
-        else:  # Old format without log transform info
-            feature_means, feature_stds, label_means, label_stds = loaded_stats
-            print("Loaded old format stats. Recalculating for log transform compatibility...")
+        else:
+            print("Incomplete stats format. Recalculating...")
             stats = None
-    else:
-        stats = None
     
     if stats is None:
         print("Calculating normalization statistics from training data...")

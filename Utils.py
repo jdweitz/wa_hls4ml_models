@@ -60,6 +60,11 @@ def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, 
     # Denormalize for interpretable plots
     test_predictions_denorm = dataset.denormalize_labels(test_predictions).numpy()
     test_targets_denorm = dataset.denormalize_labels(test_targets).numpy()
+
+    # In generate_all_plots, after denormalization:
+    print(f"Test predictions range: [{test_predictions_denorm.min():.2f}, {test_predictions_denorm.max():.2f}]")
+    print(f"Test targets range: [{test_targets_denorm.min():.2f}, {test_targets_denorm.max():.2f}]")
+    print(f"Ratio of ranges: {(test_predictions_denorm.max() - test_predictions_denorm.min()) / (test_targets_denorm.max() - test_targets_denorm.min()):.2f}")
     
     print(f"Test set size: {test_predictions_denorm.shape[0]} samples")
     print(f"Number of targets: {test_predictions_denorm.shape[1]}")
