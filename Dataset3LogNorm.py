@@ -371,35 +371,16 @@ def create_dataloaders_from_split_data(
     """
     Creates train, validation, and test DataLoaders from pre-split numpy arrays.
     Calculates normalization statistics from training data only.
-    
-    Args:
-        train_features_path (str): Path to training features .npy file
-        train_labels_path (str): Path to training labels .npy file
-        val_features_path (str): Path to validation features .npy file
-        val_labels_path (str): Path to validation labels .npy file
-        test_features_path (str): Path to test features .npy file
-        test_labels_path (str): Path to test labels .npy file
-        stats_load_path (str, optional): Path to load pre-calculated normalization stats
-        stats_save_path (str, optional): Path to save newly calculated normalization stats
-        batch_size (int): Batch size for DataLoaders
-        num_workers (int): Number of workers for DataLoader
-        pin_memory (bool): If True, DataLoaders will copy Tensors into CUDA pinned memory
-        use_log_transform (bool): Whether to apply log transformation to labels
-        log_epsilon (float): Small epsilon value to add before log transform
-        
-    Returns:
-        tuple: (train_loader, val_loader, test_loader, node_feature_dim, num_targets)
     """
-
-    # Initialize stats to None - this fixes the UnboundLocalError
+    
+    # Initialize stats to None
     stats = None
-    log_shift = None  # Also initialize log_shift
     
     # Handle normalization statistics
     if stats_load_path and os.path.exists(stats_load_path):
         print(f"Loading existing normalization stats from: {stats_load_path}")
         loaded_stats = FPGAGraphDataset.load_normalization_stats(stats_load_path)
-        if len(loaded_stats) == 7:  # Complete format with log_shift
+        if len(loaded_stats) == 7:  # New format with log transform info and log_shift
             feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon, loaded_log_shift = loaded_stats
             if loaded_use_log != use_log_transform:
                 print(f"Warning: Loaded log transform setting ({loaded_use_log}) differs from requested ({use_log_transform})")
@@ -407,11 +388,22 @@ def create_dataloaders_from_split_data(
                 stats = None
             else:
                 stats = (feature_means, feature_stds, label_means, label_stds)
-                log_shift = loaded_log_shift
                 print("Successfully loaded normalization stats with log transform info.")
-        else:
-            print("Incomplete stats format. Recalculating...")
+        elif len(loaded_stats) == 6:  # Format without log_shift
+            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon = loaded_stats
+            if loaded_use_log != use_log_transform:
+                print(f"Warning: Loaded log transform setting ({loaded_use_log}) differs from requested ({use_log_transform})")
+                print("Using requested setting and recalculating stats...")
+                stats = None
+            else:
+                stats = (feature_means, feature_stds, label_means, label_stds)
+                print("Successfully loaded normalization stats with log transform info.")
+        else:  # Old format without log transform info
+            feature_means, feature_stds, label_means, label_stds = loaded_stats
+            print("Loaded old format stats. Recalculating for log transform compatibility...")
             stats = None
+    else:
+        stats = None  # Explicitly set to None if no stats file
     
     if stats is None:
         print("Calculating normalization statistics from training data...")
@@ -422,7 +414,6 @@ def create_dataloaders_from_split_data(
         )
         stats = (train_dataset_temp.feature_means, train_dataset_temp.feature_stds,
                 train_dataset_temp.label_means, train_dataset_temp.label_stds)
-        log_shift = train_dataset_temp.log_shift
         
         # Save stats if requested
         if stats_save_path:
@@ -433,18 +424,15 @@ def create_dataloaders_from_split_data(
     print("Creating datasets with shared normalization statistics...")
     train_dataset = FPGAGraphDataset(
         train_features_path, train_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, 
-        log_epsilon=log_epsilon, log_shift=log_shift
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
     )
     val_dataset = FPGAGraphDataset(
         val_features_path, val_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, 
-        log_epsilon=log_epsilon, log_shift=log_shift
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
     )
     test_dataset = FPGAGraphDataset(
         test_features_path, test_labels_path, 
-        stats=stats, use_log_transform=use_log_transform, 
-        log_epsilon=log_epsilon, log_shift=log_shift
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
     )
     
     # Get dataset info
