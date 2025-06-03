@@ -143,7 +143,8 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         val_labels_path=VAL_LABELS_PATH,
         test_features_path=TEST_FEATURES_PATH,
         test_labels_path=TEST_LABELS_PATH,
-        stats_load_path=STATS_PATH if os.path.exists(STATS_PATH) else None,
+        # stats_load_path=STATS_PATH if os.path.exists(STATS_PATH) else None,
+        stats_load_path= None,
         stats_save_path=STATS_PATH,
         batch_size=BATCH_SIZE,
         num_workers=5,
@@ -151,6 +152,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         use_log_transform=USE_LOG_TRANSFORM,  # Add this line
         log_epsilon=LOG_EPSILON                # Add this line
     )
+    
     
 
     
