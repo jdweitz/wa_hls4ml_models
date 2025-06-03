@@ -54,7 +54,10 @@ LOG_EPSILON = 1e-6       # Small value to add before log transform
 STATS_PATH = './results/normalization_stats_log.npy' if USE_LOG_TRANSFORM else './results/normalization_stats_01.npy'
 
 
-
+# Before running training
+if os.path.exists(STATS_PATH):
+    os.remove(STATS_PATH)
+    print(f"Deleted old stats file: {STATS_PATH}")
 
 def train_epoch(model, train_loader, optimizer, criterion, device):
     """Train the model for one epoch."""
