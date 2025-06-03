@@ -18,13 +18,16 @@ def main():
     parser.add_argument("--arch", choices=["gnn", "transformer"], default="transformer", help="Architecture type")
     parser.add_argument("--eval-only", action="store_true", help="Only evaluate and plot, no training.")
     parser.add_argument("--model-path", type=str, default=None, help="Path to saved model checkpoint (for eval-only mode).")
+    parser.add_argument("--epochs", type=int, default=300, help="Number of epochs to train")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--batch-size", type=int, default=1024, help="Batch size")
     args = parser.parse_args()    
 
     timestamp = datetime.now().strftime("%m_%d_%H_%M")
 
-    num_epochs = 300
-    learning_rate = 1e-4
-    BATCH_SIZE = 1024 
+    num_epochs = args.epochs
+    learning_rate = args.lr
+    BATCH_SIZE = args.batch_size
 
     if args.eval_only:
         outdir = f"new_results_plots/testing_only_{timestamp}_{num_epochs}epochs_{learning_rate}lr_{BATCH_SIZE}bs"
@@ -71,7 +74,7 @@ def main():
             # stats_load_path=None,  # Will calculate from training data
             stats_load_path=os.path.join(base_dir, "normalization_stats.npy"),
             stats_save_path=os.path.join(base_dir, "normalization_stats.npy"),  # Save for future use
-            batch_size=1024,
+            batch_size=BATCH_SIZE,
             num_workers=4,
             pin_memory=True if device.type == 'cuda' else False,
             mode=args.arch # different than Dataset2.py bc now already split and preprocessed
