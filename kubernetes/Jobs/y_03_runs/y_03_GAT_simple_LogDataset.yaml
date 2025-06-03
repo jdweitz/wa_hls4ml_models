@@ -32,12 +32,14 @@ spec:
               apt-get update && apt-get install -y unzip
               
 
-              cd /dima-pvc/wa-dd-prediction-model/
-              # cd ../../dima-pvc/wa-dd-prediction-model/
+              cd /dima-pvc/wa_hls4ml_models/
+
+              pip install --upgrade pip
+              pip install -r requirements.txt
                             
               # Run the global search for all model types
               python y_03_GAT_simple_LogDataset.py
-            } 2>&1 | tee /dima-pvc/wa-dd-prediction-model/logs/y_03_GAT_simple_LogDataset.log  
+            } 2>&1 | tee /dima-pvc/wa_hls4ml_models/logs/y_03_GAT_simple_LogDataset.log  
         resources:
           limits:
             memory: 16Gi
