@@ -8,8 +8,10 @@ __pycache__/
 # Ignore output/plots/logs folders
 plots/
 logs/
+new_logs/
 results/
 results_and_plots/
+new_results_plots/
 
 conv_without_filters/
 output/

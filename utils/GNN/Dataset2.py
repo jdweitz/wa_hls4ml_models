@@ -5,6 +5,7 @@ from torch_geometric.loader import DataLoader
 import torch.nn.functional as F
 import os
 from tqdm import tqdm
+import argparse
 
 
 class FPGAGraphDataset(Dataset):
@@ -287,13 +288,79 @@ class FPGAGraphDataset(Dataset):
 
         return data
 
+    def get_transformer(self, idx):
+        """
+        Returns features, pad_mask, and normalized labels for a transformer model.
+        - x: shape (num_layers, node_feature_dim)
+        - pad_mask: shape (num_layers,) (True if padded)
+        - y: shape (num_targets,)
+        """
+        model_features_raw = self.features_np[idx]  # (max_layers, num_raw_features)
+        model_labels = self.labels_np[idx]          # (num_targets,)
+
+        node_features_list = []
+        pad_mask = []
+        for i in range(model_features_raw.shape[0]):
+            layer_data_raw = model_features_raw[i]
+            # Check for padded row (all -1s)
+            if np.all(layer_data_raw == -1):
+                node_features_list.append(torch.zeros(self.node_feature_dim, dtype=torch.float))
+                pad_mask.append(True)
+                continue
+            pad_mask.append(False)
+
+            # Numerical features
+            current_numerical_feats_raw = torch.from_numpy(
+                layer_data_raw[self.numerical_feature_indices.numpy()]
+            ).float()
+            numerical_feats_processed = torch.zeros_like(current_numerical_feats_raw)
+            for j in range(self.num_numerical_features):
+                val = current_numerical_feats_raw[j]
+                if val == -1.0:
+                    numerical_feats_processed[j] = (0.0 - self.feature_means[j]) / self.feature_stds[j]
+                else:
+                    numerical_feats_processed[j] = (val - self.feature_means[j]) / self.feature_stds[j]
+            
+            # Categorical one-hot
+            layer_type_val = layer_data_raw[self.layer_type_idx]
+            activation_type_val = layer_data_raw[self.activation_type_idx]
+            padding_val = layer_data_raw[self.padding_idx]
+            # io_type_val = layer_data_raw[self.io_type_idx]   # <-- REMOVE THIS FOR TRANSFORMER
+
+            ohe_layer_type = self._one_hot_encode(layer_type_val, self.num_layer_types)
+            ohe_activation_type = self._one_hot_encode(activation_type_val, self.num_activation_types)
+            ohe_padding = self._one_hot_encode(padding_val, self.num_padding_types)
+            # ohe_io_type = self._one_hot_encode(io_type_val, self.num_io_types)  # <-- REMOVE
+
+            current_node_features = torch.cat([
+                numerical_feats_processed,
+                ohe_layer_type,
+                ohe_activation_type,
+                ohe_padding
+                # ohe_io_type  # <-- REMOVE
+            ], dim=0)
+            node_features_list.append(current_node_features)
+        
+        x = torch.stack(node_features_list)
+        pad_mask_tensor = torch.tensor(pad_mask, dtype=torch.bool)
+        labels_tensor = torch.tensor(model_labels, dtype=torch.float)
+        normalized_labels = (labels_tensor - self.label_means) / self.label_stds
+
+        return x, pad_mask_tensor, normalized_labels 
+
+    def __getitem__(self, idx):
+        if getattr(self, "mode", "gnn") == "transformer":
+            return self.get_transformer(idx)
+        else:
+            return self.get(idx)
 
 def create_dataloaders_from_split_data(
     train_features_path, train_labels_path,
     val_features_path, val_labels_path,
     test_features_path, test_labels_path,
     stats_load_path=None, stats_save_path=None,
-    batch_size=32, num_workers=0, pin_memory=True
+    batch_size=32, num_workers=0, pin_memory=True,
+    mode ="gnn"
 ):
     """
     Creates train, validation, and test DataLoaders from pre-split numpy arrays.
@@ -371,24 +438,44 @@ def create_dataloaders_from_split_data(
         pin_memory=pin_memory
     )
     
+    # Create datasets with shared normalization statistics
+    print("Creating datasets with shared normalization statistics...")
+    train_dataset = FPGAGraphDataset(train_features_path, train_labels_path, stats=stats)
+    val_dataset = FPGAGraphDataset(val_features_path, val_labels_path, stats=stats)
+    test_dataset = FPGAGraphDataset(test_features_path, test_labels_path, stats=stats)
+
+    # Set the mode for each dataset instance
+    train_dataset.mode = mode
+    val_dataset.mode = mode
+    test_dataset.mode = mode
+
+    # ... rest of your code ...
     return train_loader, val_loader, test_loader, node_feature_dim, num_targets
 
 
-# Usage example with your new data structure:
-# if __name__ == "__main__":
-#     train_loader, val_loader, test_loader, node_feature_dim, num_targets = create_dataloaders_from_split_data(
-#         train_features_path="./Full_dataset_processed_split/train_features.npy",
-#         train_labels_path="./Full_dataset_processed_split/train_labels.npy",
-#         val_features_path="./Full_dataset_processed_split/val_features.npy", 
-#         val_labels_path="./Full_dataset_processed_split/val_labels.npy",
-#         test_features_path="./Full_dataset_processed_split/test_features.npy",
-#         test_labels_path="./Full_dataset_processed_split/test_labels.npy",
-#         stats_load_path=None,  # Will calculate from training data
-#         stats_save_path="./Full_dataset_processed_split/normalization_stats.npy",  # Save for future use
-#         batch_size=32,
-#         num_workers=0,
-#         pin_memory=True
-#     )
+base_dir = "./dataset/output/split_dataset/result/result"
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["gnn", "transformer"], default="gnn")
+    args = parser.parse_args()
+    train_loader, val_loader, test_loader, node_feature_dim, num_targets = create_dataloaders_from_split_data(
+        train_features_path=os.path.join(base_dir, "train_features.npy"),
+        train_labels_path=os.path.join(base_dir, "train_labels.npy"),
+        val_features_path=os.path.join(base_dir, "val_features.npy"),
+        val_labels_path=os.path.join(base_dir, "val_labels.npy"),
+        test_features_path=os.path.join(base_dir, "test_features.npy"),
+        test_labels_path=os.path.join(base_dir, "test_labels.npy"),
+        stats_load_path=None,  # Will calculate from training data
+        stats_save_path=os.path.join(base_dir, "normalization_stats.npy"),  # Save for future use
+        batch_size=1024,
+        num_workers=4,
+        pin_memory=True,
+        mode=args.mode  # ADDED THIS
+    )
 
 
 # input are the numpy files
+
+# python Dataset2.py --mode gnn # to get GNN behavior.
+# python Dataset2.py --mode transformer # to get transformer behavior.
