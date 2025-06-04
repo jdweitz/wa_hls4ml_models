@@ -38,7 +38,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 2048
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 2 #TODO: fix this to 1000
+NUM_EPOCHS = 1500
 WEIGHT_DECAY = 5e-6
 
 # FPGA_GNN (SAGEConv) specific hyperparameters
@@ -260,8 +260,8 @@ def train_gatv2_gnn(output_dir='results/GATv2_results'):
 
     # 3. Initialize Optimizer and Loss
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-    criterion = nn.MSELoss()
-    # criterion = MagnitudeWeightedMSELoss(alpha=0.5)
+    # criterion = nn.MSELoss()
+    criterion = MagnitudeWeightedMSELoss(alpha=0.5)
     # criterion = RelativeMSELoss()
     # criterion = AsymmetricMSELoss(underpredict_weight=2.0)
     # criterion = QuantileWeightedMSELoss()
