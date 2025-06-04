@@ -10,8 +10,118 @@ import torch.nn.functional as F
 
 
 
+# def generate_all_plots_old(model, dataset, train_loader, test_loader, train_losses, val_losses, 
+#                       output_dir="results", device=None):
+#     """
+#     Generate all plots for the trained GNN model.
+    
+#     Args:
+#         model: Trained GNN model
+#         dataset: Dataset object with denormalization methods
+#         train_loader: Training data loader
+#         test_loader: Test data loader  
+#         train_losses: List of training losses per epoch
+#         val_losses: List of validation losses per epoch
+#         output_dir: Directory to save plots
+#         device: Device to run inference on
+#     """
+    
+#     if device is None:
+#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+#     # Define output feature names based on your model
+#     # output_features = ['CYCLES', 'II', 'FF', 'LUT', 'BRAM', 'DSP']
+#     # output_features =['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
+#     output_features = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II'] 
+    
+    
+#     print("Generating plots...")
+    
+#     # 1. Plot training curves
+#     print("1. Plotting training curves...")
+#     plot_loss(train_losses, val_losses, outdir=f"{output_dir}/plots")
+    
+#     # 2. Get test predictions for other plots
+#     print("2. Getting test predictions...")
+#     model.eval()
+#     test_predictions = []
+#     test_targets = []
+    
+#     with torch.no_grad():
+#         for batch in test_loader:
+#             batch = batch.to(device)
+#             predictions = model(batch)
+#             targets = batch.y.squeeze(1)
+            
+#             test_predictions.append(predictions.cpu())
+#             test_targets.append(targets.cpu())
+    
+#     # Concatenate and denormalize for plotting
+#     test_predictions = torch.cat(test_predictions, dim=0)
+#     test_targets = torch.cat(test_targets, dim=0)
+    
+#     # Denormalize for interpretable plots
+#     test_predictions_denorm = dataset.denormalize_labels(test_predictions).numpy()
+#     test_targets_denorm = dataset.denormalize_labels(test_targets).numpy()
+
+#     # In generate_all_plots, after denormalization:
+#     print(f"Test predictions range: [{test_predictions_denorm.min():.2f}, {test_predictions_denorm.max():.2f}]")
+#     print(f"Test targets range: [{test_targets_denorm.min():.2f}, {test_targets_denorm.max():.2f}]")
+#     print(f"Ratio of ranges: {(test_predictions_denorm.max() - test_predictions_denorm.min()) / (test_targets_denorm.max() - test_targets_denorm.min()):.2f}")
+    
+#     print(f"Test set size: {test_predictions_denorm.shape[0]} samples")
+#     print(f"Number of targets: {test_predictions_denorm.shape[1]}")
+    
+#     # 3. Plot box plots with prediction errors
+#     print("3. Plotting box plots...")
+#     plot_box_plots_symlog(test_predictions_denorm, test_targets_denorm, output_dir)
+    
+#     # 4. Plot scatter plots (actual vs predicted)
+#     print("4. Plotting scatter plots...")
+#     plot_results_simplified(
+#         name="GNN_Test_Results",
+#         mpl_plots=True,  # Generate matplotlib plots
+#         y_test=test_targets_denorm,
+#         y_pred=test_predictions_denorm,
+#         output_features=output_features,
+#         folder_name=output_dir
+#     )
+    
+#     print(f"All plots saved to {output_dir}/plots/")
+    
+#     # 5. Calculate and display metrics using the calculate_metrics function
+#     print("5. Calculating metrics...")
+    
+#     # Convert back to tensors for metric calculation (using denormalized values)
+#     test_predictions_tensor = torch.tensor(test_predictions_denorm, dtype=torch.float32)
+#     test_targets_tensor = torch.tensor(test_targets_denorm, dtype=torch.float32)
+    
+#     metrics = calculate_metrics(test_predictions_tensor, test_targets_tensor, output_features)
+    
+#     # Display metrics
+#     print("\nOverall Metrics:")
+#     print("="*50)
+#     for metric_name, value in metrics['overall'].items():
+#         if metric_name in ['MAPE', 'SMAPE']:
+#             print(f"{metric_name}: {value:.2f}%")
+#         else:
+#             print(f"{metric_name}: {value:.5e}")
+    
+#     print("\nPer-Feature Metrics:")
+#     print("="*50)
+#     for feature_name, feature_metrics in metrics['per_feature'].items():
+#         print(f"{feature_name}:")
+#         for metric_name, value in feature_metrics.items():
+#             if metric_name in ['MAPE', 'SMAPE']:
+#                 print(f"  {metric_name}: {value:.2f}%")
+#             else:
+#                 print(f"  {metric_name}: {value:.5e}")
+#         print()
+    
+#     return metrics
+
 def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, val_losses, 
-                      output_dir="results", device=None):
+                      output_dir="results", device=None, test_features_path=None):
     """
     Generate all plots for the trained GNN model.
     
@@ -24,16 +134,14 @@ def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, 
         val_losses: List of validation losses per epoch
         output_dir: Directory to save plots
         device: Device to run inference on
+        test_features_path: Path to test features for model type classification
     """
     
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Define output feature names based on your model
-    # output_features = ['CYCLES', 'II', 'FF', 'LUT', 'BRAM', 'DSP']
-    # output_features =['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II']
     output_features = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II'] 
-    
     
     print("Generating plots...")
     
@@ -64,7 +172,22 @@ def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, 
     test_predictions_denorm = dataset.denormalize_labels(test_predictions).numpy()
     test_targets_denorm = dataset.denormalize_labels(test_targets).numpy()
 
-    # In generate_all_plots, after denormalization:
+    # Get model types for colored plotting
+    model_types = None
+    if test_features_path and os.path.exists(test_features_path):
+        print("3. Loading test features for model type classification...")
+        test_features_np = np.load(test_features_path)
+        model_types = get_model_types(test_features_np)
+        print(f"   Found {len(model_types)} test samples")
+        
+        # Count model types
+        type_counts = {}
+        for mt in model_types:
+            type_counts[mt] = type_counts.get(mt, 0) + 1
+        print(f"   Model type distribution: {type_counts}")
+    else:
+        print("3. No test features path provided, using default coloring...")
+
     print(f"Test predictions range: [{test_predictions_denorm.min():.2f}, {test_predictions_denorm.max():.2f}]")
     print(f"Test targets range: [{test_targets_denorm.min():.2f}, {test_targets_denorm.max():.2f}]")
     print(f"Ratio of ranges: {(test_predictions_denorm.max() - test_predictions_denorm.min()) / (test_targets_denorm.max() - test_targets_denorm.min()):.2f}")
@@ -72,25 +195,26 @@ def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, 
     print(f"Test set size: {test_predictions_denorm.shape[0]} samples")
     print(f"Number of targets: {test_predictions_denorm.shape[1]}")
     
-    # 3. Plot box plots with prediction errors
-    print("3. Plotting box plots...")
+    # 4. Plot box plots with prediction errors
+    print("4. Plotting box plots...")
     plot_box_plots_symlog(test_predictions_denorm, test_targets_denorm, output_dir)
     
-    # 4. Plot scatter plots (actual vs predicted)
-    print("4. Plotting scatter plots...")
+    # 5. Plot scatter plots (actual vs predicted) with model type coloring
+    print("5. Plotting scatter plots...")
     plot_results_simplified(
         name="GNN_Test_Results",
         mpl_plots=True,  # Generate matplotlib plots
         y_test=test_targets_denorm,
         y_pred=test_predictions_denorm,
         output_features=output_features,
-        folder_name=output_dir
+        folder_name=output_dir,
+        model_types=model_types  # Pass the model types here!
     )
     
     print(f"All plots saved to {output_dir}/plots/")
     
-    # 5. Calculate and display metrics using the calculate_metrics function
-    print("5. Calculating metrics...")
+    # 6. Calculate and display metrics using the calculate_metrics function
+    print("6. Calculating metrics...")
     
     # Convert back to tensors for metric calculation (using denormalized values)
     test_predictions_tensor = torch.tensor(test_predictions_denorm, dtype=torch.float32)
@@ -180,6 +304,28 @@ def calculate_metrics(predictions, targets, feature_names=None):
             }
     
     return metrics
+
+def get_model_types(features_np):
+    """
+    Determine model types based on layer types present in the features.
+    
+    Args:
+        features_np: numpy array of shape (num_samples, max_layers, num_features)
+    
+    Returns:
+        list: List of model types ['Dense', 'Conv1D', 'Conv2D'] for each sample
+    """
+    model_types = []
+    for model in features_np:
+        valid_layers = [layer for layer in model if not np.all(layer == -1)]
+        layer_types = [int(layer[9]) for layer in valid_layers]  # layer_type is at index 9
+        if any(lt == 2 for lt in layer_types):
+            model_types.append('Conv1D')
+        elif any(lt == 3 for lt in layer_types):
+            model_types.append('Conv2D')
+        else:
+            model_types.append('Dense')
+    return model_types
 
 
 def save_metrics_to_file(metrics, output_dir, model_config=None, training_config=None, name_base="test"):

@@ -38,7 +38,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 1024
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 1500
+NUM_EPOCHS = 5 #TODO: Set to 1500
 WEIGHT_DECAY = 5e-6
 
 GNN_HIDDEN_DIM = 256
@@ -445,26 +445,21 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
                 name_base=interim_metrics_filename 
             )
             
-
             print(f"\nGenerating interim plots for epoch {epoch+1} into {interim_plots_output_dir}...")
-            # We can reuse generate_all_plots but it might try to plot train/val losses
-            # for the whole run. Let's create a focused plot generation.
             
-            # 1. Interim Plot training curves (up to current epoch)
-            plot_loss(train_losses, val_losses, outdir=f"{interim_plots_output_dir}")
-
-            # 2. Interim Box plots
-            plot_box_plots_symlog(interim_test_pred.numpy(), interim_test_targets.numpy(), interim_plots_output_dir)
-            
-            # 3. Interim Scatter plots
-            plot_results_simplified(
-                name=f"GNN_Test_Results_Epoch_{epoch+1}",
-                mpl_plots=True,
-                y_test=interim_test_targets.numpy(),
-                y_pred=interim_test_pred.numpy(),
-                output_features=feature_names,
-                folder_name=interim_plots_output_dir 
+            # FIXED: Complete call to generate_all_plots with all required parameters
+            interim_plot_metrics = generate_all_plots(
+                model=model,
+                dataset=dataset,
+                train_loader=train_loader,
+                test_loader=test_loader,
+                train_losses=train_losses[:epoch+1],  # Only losses up to current epoch
+                val_losses=val_losses[:epoch+1],      # Only losses up to current epoch
+                output_dir=interim_plots_output_dir,   # Use interim directory
+                device=device,
+                test_features_path=TEST_FEATURES_PATH  # ADD THIS for model type coloring!
             )
+            
             print(f"--- Interim metrics and plots for epoch {epoch+1} saved ---")
             # Ensure model is back to training mode if further training happens in this epoch (though unlikely with this structure)
             model.train()
@@ -548,6 +543,17 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
 
     # 8. Generate all plots
     print("\nGenerating plots...")
+    # plot_metrics = generate_all_plots(
+    #     model=model,
+    #     dataset=dataset,
+    #     train_loader=train_loader,
+    #     test_loader=test_loader,
+    #     train_losses=train_losses,
+    #     val_losses=val_losses,
+    #     output_dir=output_dir,
+    #     device=device
+    # )
+    print("\nGenerating plots...")
     plot_metrics = generate_all_plots(
         model=model,
         dataset=dataset,
@@ -556,7 +562,8 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         train_losses=train_losses,
         val_losses=val_losses,
         output_dir=output_dir,
-        device=device
+        device=device,
+        test_features_path=TEST_FEATURES_PATH
     )
 
     # 9. Save final model
