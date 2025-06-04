@@ -1,13 +1,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dd-wa-gat-simple-logdata
+  name: dd-wa-gat-simple-logdata2
 spec:
   completions: 1
   parallelism: 1
   template:
     metadata:
-      name: dd-wa-gat-simple-logdata
+      name: dd-wa-gat-simple-logdata2
     spec:
       restartPolicy: Never
       affinity:
