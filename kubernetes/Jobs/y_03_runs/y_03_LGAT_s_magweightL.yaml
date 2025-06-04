@@ -1,13 +1,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: dd-wa-lgat-s-magweightL
+  name: dd-wa-lgat-s-magweight-l
 spec:
   completions: 1
   parallelism: 1
   template:
     metadata:
-      name: dd-wa-lgat-s-magweightL
+      name: dd-wa-lgat-s-magweight-l
     spec:
       restartPolicy: Never
       affinity:

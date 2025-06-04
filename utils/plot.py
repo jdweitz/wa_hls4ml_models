@@ -194,7 +194,8 @@ def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, fo
     Simplified version of plot_results that doesn't require X_raw_test.
     Creates basic scatter plots without strategy-based grouping.
     """
-    type_color_map = {'Dense': 'blue', 'Conv1D': 'red', 'Conv2D': 'green'}
+    # type_color_map = {'Dense': 'blue', 'Conv1D': 'red', 'Conv2D': 'green'}
+    type_color_map = {'Dense': '#4C72B0', 'Conv1D': '#55A868', 'Conv2D': '#C44E52'}
     colors = ['orange']
     # colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'orange']
 

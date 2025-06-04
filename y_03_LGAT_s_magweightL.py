@@ -11,7 +11,7 @@ from Models import FPGA_GNN_GATv2, FPGA_GNN_GATv2_Enhanced
 # from Dataset2 import create_dataloaders_from_split_data  # Updated import
 from Dataset3LogNorm import create_dataloaders_from_split_data, FPGAGraphDataset
 # from Utils import generate_all_plots, calculate_metrics, save_metrics_to_file
-from Utils import *
+from Utils import generate_all_plots, calculate_metrics, save_metrics_to_file, MagnitudeWeightedMSELoss, RelativeMSELoss, AsymmetricMSELoss, QuantileWeightedMSELoss
 
 
 #!!!!!! CHANGE THIS FOLDER NAME TO YOUR OWN FOLDER NAME !!!!!!!#
@@ -38,7 +38,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 # Training configuration
 BATCH_SIZE = 1024
 LEARNING_RATE = 3e-3
-NUM_EPOCHS = 5 #TODO: Set to 1500
+NUM_EPOCHS = 1500
 WEIGHT_DECAY = 5e-6
 
 GNN_HIDDEN_DIM = 256
