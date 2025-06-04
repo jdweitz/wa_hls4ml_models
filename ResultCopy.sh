@@ -20,7 +20,7 @@ LOCAL_DEST_BASE_PATH="/Users/dimademler/Desktop/UCSD/labs/wa_datasetRemake_mulde
 # FOLDER_TO_COPY="enhanced_GAT__night_May_27_test" # The specific folder you want to copy
 # FOLDER_TO_COPY="y_29_GAT_enhanced" # The specific folder you want to copy
 # FOLDER_TO_COPY="y_29_GNN_convOnly_baseline" # The specific folder you want to copy
-FOLDER_TO_COPY="y_03_baseline" # The specific folder you want to copy
+FOLDER_TO_COPY="y_03_GAT_simple" # The specific folder you want to copy
 
 # --- Construct Full Paths ---
 REMOTE_FULL_PATH="${REMOTE_BASE_PATH}/${FOLDER_TO_COPY}"
