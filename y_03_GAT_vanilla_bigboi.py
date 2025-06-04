@@ -274,7 +274,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
         optimizer, 
         mode='min',
         factor=0.5,
-        patience=6,
+        patience=7,
         min_lr=1e-7,
         verbose=True,
         threshold=1e-4,
@@ -289,7 +289,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results', use_enhanced_model=False
     best_val_loss = float('inf')
     best_model_state = None
     patience_counter = 0
-    early_stopping_patience = 25
+    early_stopping_patience = 40
     
     # Define feature names
     feature_names = ['CYCLES', 'FF', 'LUT', 'BRAM', 'DSP', 'II'] 
