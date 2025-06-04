@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dd-wa-lgat-s-magweightL
+spec:
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      name: dd-wa-lgat-s-magweightL
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - "NVIDIA-GeForce-RTX-3090"
+      containers:
+      - name: pytorch-gpu-container
+        image: gitlab-registry.nrp-nautilus.io/dimademler/wa-dataset:latest  
+        # image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime  
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            {
+              # Update package lists and install unzip
+              # apt-get update && apt-get install -y unzip
+              
+
+              cd /dima-pvc/wa_hls4ml_models/
+
+              # pip install --upgrade pip
+              # pip install -r requirements.txt
+                            
+              # Run the global search for all model types
+              python y_03_LGAT_s_magweightL.py
+            } 2>&1 | tee /dima-pvc/wa_hls4ml_models/logs/y_03_LGAT_s_magweightL.log  
+        resources:
+          limits:
+            memory: 16Gi
+            cpu: 5
+            nvidia.com/gpu: 1
+          requests:
+            memory: 14Gi
+            cpu: 5
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - mountPath: /dima-pvc
+          name: dima-pvc
+      volumes:
+        - name: dima-pvc
+          persistentVolumeClaim:
+            claimName: pvc2-dmitridemler

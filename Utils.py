@@ -5,6 +5,9 @@ import torch
 import numpy as np
 from utils.plot import plot_loss, plot_box_plots_symlog, plot_results_simplified
 import os
+import torch.nn as nn
+import torch.nn.functional as F
+
 
 
 def generate_all_plots(model, dataset, train_loader, test_loader, train_losses, val_losses, 
@@ -239,3 +242,92 @@ def save_metrics_to_file(metrics, output_dir, model_config=None, training_config
         f.write("="*60 + "\n")
     
     print(f"Metrics saved to: {metrics_file_path}")
+
+
+class MagnitudeWeightedMSELoss(nn.Module):
+    """MSE loss weighted by target magnitude to emphasize larger values."""
+    def __init__(self, alpha=0.5, epsilon=1.0):
+        super().__init__()
+        self.alpha = alpha  # Controls the strength of weighting
+        self.epsilon = epsilon  # Prevents division by zero
+        
+    def forward(self, predictions, targets):
+        # Calculate weights based on target magnitude
+        # Larger targets get higher weights
+        weights = torch.pow(torch.abs(targets) + self.epsilon, self.alpha)
+        weights = weights / weights.mean()  # Normalize weights
+        
+        # Calculate weighted MSE
+        mse = (predictions - targets) ** 2
+        weighted_mse = mse * weights
+        
+        return weighted_mse.mean()
+
+
+class RelativeMSELoss(nn.Module):
+    """Relative MSE that penalizes percentage errors rather than absolute errors."""
+    def __init__(self, epsilon=1e-6):
+        super().__init__()
+        self.epsilon = epsilon
+        
+    def forward(self, predictions, targets):
+        # Calculate relative error
+        relative_error = (predictions - targets) / (torch.abs(targets) + self.epsilon)
+        relative_mse = relative_error ** 2
+        
+        return relative_mse.mean()
+
+
+class AsymmetricMSELoss(nn.Module):
+    """Asymmetric loss that penalizes underprediction more than overprediction."""
+    def __init__(self, underpredict_weight=2.0):
+        super().__init__()
+        self.underpredict_weight = underpredict_weight
+        
+    def forward(self, predictions, targets):
+        errors = predictions - targets
+        
+        # Apply different weights for under vs over prediction
+        weights = torch.where(errors < 0, 
+                            self.underpredict_weight, 
+                            torch.ones_like(errors))
+        
+        weighted_mse = weights * (errors ** 2)
+        return weighted_mse.mean()
+
+
+class QuantileWeightedMSELoss(nn.Module):
+    """Weights samples based on their target quantile - higher quantiles get more weight."""
+    def __init__(self, quantile_weights=None):
+        super().__init__()
+        # Default: emphasize top quantiles
+        if quantile_weights is None:
+            quantile_weights = [0.5, 0.7, 1.0, 1.5, 2.0]  # for quintiles
+        self.quantile_weights = torch.tensor(quantile_weights)
+        
+    def forward(self, predictions, targets, batch):
+        # For each feature, determine quantile of each sample
+        batch_size = predictions.shape[0]
+        num_features = predictions.shape[1]
+        
+        weights = torch.ones_like(predictions)
+        
+        for feat_idx in range(num_features):
+            # Get quantiles for this feature
+            feat_targets = targets[:, feat_idx]
+            quantiles = torch.quantile(feat_targets, 
+                                     torch.linspace(0, 1, len(self.quantile_weights) + 1).to(targets.device))
+            
+            # Assign weights based on quantile
+            for i in range(len(self.quantile_weights)):
+                if i < len(self.quantile_weights) - 1:
+                    mask = (feat_targets >= quantiles[i]) & (feat_targets < quantiles[i+1])
+                else:
+                    mask = feat_targets >= quantiles[i]
+                weights[mask, feat_idx] = self.quantile_weights[i]
+        
+        # Calculate weighted MSE
+        mse = (predictions - targets) ** 2
+        weighted_mse = mse * weights
+        
+        return weighted_mse.mean()
