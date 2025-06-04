@@ -10,8 +10,8 @@ spec:
     args: ["-c", "apt-get update && apt-get install -y vim nano git && cd /dima-pvc/wa_hls4ml_models/ && sleep infinity"]
     resources:
       limits:
-        memory: 500Mi
-        cpu: 300m
+        memory: 900Mi
+        cpu: 900m
       requests:
         memory: 400Mi
         cpu: 300m
