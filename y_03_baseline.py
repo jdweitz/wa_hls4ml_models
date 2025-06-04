@@ -37,8 +37,8 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 
 # Training configuration
 BATCH_SIZE = 2048
-LEARNING_RATE = 2e-3
-NUM_EPOCHS = 500
+LEARNING_RATE = 3e-3
+NUM_EPOCHS = 1500
 WEIGHT_DECAY = 5e-6
 
 # FPGA_GNN (SAGEConv) specific hyperparameters
