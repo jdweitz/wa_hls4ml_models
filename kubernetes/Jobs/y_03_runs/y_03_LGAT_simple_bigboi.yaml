@@ -38,11 +38,11 @@ spec:
             } 2>&1 | tee /dima-pvc/wa_hls4ml_models/logs/y_03_LGAT_simple_bigboi.log  
         resources:
           limits:
-            memory: 16Gi
+            memory: 21Gi
             cpu: 5
             nvidia.com/gpu: 1
           requests:
-            memory: 14Gi
+            memory: 20Gi
             cpu: 5
             nvidia.com/gpu: 1
         volumeMounts:
