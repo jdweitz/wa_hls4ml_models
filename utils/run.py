@@ -75,7 +75,7 @@ def main():
             test_features_path=os.path.join(base_dir, "test_features.npy"),
             test_labels_path=os.path.join(base_dir, "test_labels.npy"),
             stats_load_path=None,  # Will calculate from training data
-            # stats_load_path=os.path.join(base_dir, "normalization_stats.npy"),
+            # stats_load_path=os.path.join(base_dir, "lognormalization_stats.npy"),
             stats_save_path=os.path.join(base_dir, "lognormalization_stats.npy"),  # Save for future use
             batch_size=BATCH_SIZE,
             num_workers=4,
