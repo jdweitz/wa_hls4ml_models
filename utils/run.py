@@ -74,9 +74,9 @@ def main():
             val_labels_path=os.path.join(base_dir, "val_labels.npy"),
             test_features_path=os.path.join(base_dir, "test_features.npy"),
             test_labels_path=os.path.join(base_dir, "test_labels.npy"),
-            stats_load_path=None,  # Will calculate from training data
-            # stats_load_path=os.path.join(base_dir, "lognormalization_stats.npy"),
-            stats_save_path=os.path.join(base_dir, "lognormalization_stats.npy"),  # Save for future use
+            # stats_load_path=None,  # Will calculate from training data
+            stats_load_path=os.path.join(base_dir, "lognormalization_stats.npy"),
+            # stats_save_path=os.path.join(base_dir, "lognormalization_stats.npy"),  # Save for future use
             batch_size=BATCH_SIZE,
             num_workers=4,
             pin_memory=True if device.type == 'cuda' else False,
@@ -180,3 +180,5 @@ if __name__ == "__main__":
 
 # # example of inference only:
 # python run.py --arch transformer --eval-only --model-path new_results_plots/06_02_17_45_20epochs_0.0001lr_1024bs/best_model/model.pt
+
+# nohup python run.py --arch transformer > 6_3_logs/test1.log 2>&1 &
