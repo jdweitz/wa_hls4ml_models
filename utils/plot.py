@@ -189,20 +189,44 @@ def plot_results(
     pio.write_html(fig, file=os.path.join(directory, f"{name}_outputs.html"), auto_open=False)
 
 
-def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, folder_name):
+def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, folder_name, model_types=None):
     """
     Simplified version of plot_results that doesn't require X_raw_test.
     Creates basic scatter plots without strategy-based grouping.
     """
-    colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'orange']
+    type_color_map = {'Dense': '#4c72b0', 'Conv1D': '#55a868', 'Conv2D': '#c44e52'}
+    colors = ['pink']
+    # colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'orange']
 
     if mpl_plots:
         for i, feature in enumerate(output_features):
             plt.figure(figsize=(8, 6))
-            plt.scatter(y_test[:, i], y_pred[:, i], s=20, label=feature, color=colors[i % len(colors)], alpha=0.7)
+            if model_types is not None:
+                unique_types = ['Dense', 'Conv1D', 'Conv2D']
+                for t in unique_types:
+                    idxs = [j for j, mt in enumerate(model_types) if mt == t]
+                    if len(idxs) == 0:
+                        continue
+                    plt.scatter(
+                        y_test[idxs, i],
+                        y_pred[idxs, i],
+                        s=10,
+                        label=t,
+                        color=type_color_map.get(t, 'gray'),
+                        alpha=0.75,
+                        marker='o',   # Use '.' or ',' for tiny fast dots
+                    )
+            else:
+                plt.scatter(
+                    y_test[:, i], y_pred[:, i],
+                    s=20, label=feature, color=colors[i % len(colors)], alpha=0.7
+                )
+
             plt.title('Actual vs Predicted for ' + feature)
             plt.xlabel('Actual Value')
             plt.ylabel('Predicted Value')
+            plt.xscale('log')
+            plt.yscale('log')
             plt.legend()
             vmin = min(np.min(y_test[:, i]), np.min(y_pred[:, i]))
             vmax = max(np.max(y_test[:, i]), np.max(y_pred[:, i]))
@@ -233,22 +257,65 @@ def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, fo
         row = i // n_cols + 1
         col = i % n_cols + 1
         
-        # Simple scatter plot without strategy grouping
-        scatter = go.Scatter(
-            x=y_test[:, i],
-            y=y_pred[:, i],
-            mode='markers',
-            name=f'{output_features[i]}',
-            marker=dict(
-                color=colors[i % len(colors)],
-                size=6,
-                opacity=0.7,
-            ),
-            hovertemplate=
-                '<i>Actual</i>: %{x}<br>' +
-                '<b>Predicted</b>: %{y}<br><extra></extra>',
-        )
-        fig.add_trace(scatter, row=row, col=col)
+        # # Simple scatter plot without strategy grouping
+        # scatter = go.Scatter(
+        #     x=y_test[:, i],
+        #     y=y_pred[:, i],
+        #     mode='markers',
+        #     name=f'{output_features[i]}',
+        #     marker=dict(
+        #         color=colors[i % len(colors)],
+        #         size=6,
+        #         opacity=0.7,
+        #     ),
+        #     hovertemplate=
+        #         '<i>Actual</i>: %{x}<br>' +
+        #         '<b>Predicted</b>: %{y}<br><extra></extra>',
+        # )
+        # fig.add_trace(scatter, row=row, col=col)
+
+        if model_types is not None:
+            unique_types = ['Dense', 'Conv1D', 'Conv2D']
+            for t in unique_types:
+                idxs = [j for j, mt in enumerate(model_types) if mt == t]
+                if len(idxs) == 0:
+                    continue
+                fig.add_trace(
+                    go.Scatter(
+                        x=y_test[idxs, i],
+                        y=y_pred[idxs, i],
+                        mode='markers',
+                        name=f'{output_features[i]} - {t}',
+                        marker=dict(
+                            color=type_color_map.get(t, 'gray'),
+                            size=6,
+                            opacity=0.7,
+                        ),
+                        hovertemplate=
+                            f'<b>{t}</b><br>' +
+                            '<i>Actual</i>: %{x}<br>' +
+                            '<b>Predicted</b>: %{y}<br><extra></extra>',
+                    ),
+                    row=row, col=col
+                )
+        else:
+            fig.add_trace(
+                go.Scatter(
+                    x=y_test[:, i],
+                    y=y_pred[:, i],
+                    mode='markers',
+                    name=f'{output_features[i]}',
+                    marker=dict(
+                        color=colors[i % len(colors)],
+                        size=6,
+                        opacity=0.7,
+                    ),
+                    hovertemplate=
+                        '<i>Actual</i>: %{x}<br>' +
+                        '<b>Predicted</b>: %{y}<br><extra></extra>',
+                ),
+                row=row, col=col
+            )        
 
         # Perfect prediction line
         fig.add_trace(

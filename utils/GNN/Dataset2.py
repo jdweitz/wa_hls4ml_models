@@ -14,12 +14,19 @@ class FPGAGraphDataset(Dataset):
     Each sample is a neural network represented as a graph, where nodes are layers
     and edges represent the flow of data between layers.
     """
-    def __init__(self, features_path, labels_path, transform=None, pre_transform=None, stats=None):
+    def __init__(self, features_path, labels_path, transform=None, pre_transform=None, stats=None, use_log_transform=False, log_epsilon=1e-6, log_shift=None):
         super(FPGAGraphDataset, self).__init__(None, transform, pre_transform) # root=None as we load from numpy
         print(f"Loading features from: {features_path}")
         self.features_np = np.load(features_path)
         print(f"Loading labels from: {labels_path}")
         self.labels_np = np.load(labels_path)
+
+        # Log transformation settings
+        self.use_log_transform = use_log_transform
+        self.log_epsilon = log_epsilon
+        print(f"Using log transformation: {self.use_log_transform}")
+        if self.use_log_transform:
+            print(f"Log epsilon: {self.log_epsilon}")
 
         # Feature indices from the dataset
         self.feature_indices_map = {
@@ -75,6 +82,18 @@ class FPGAGraphDataset(Dataset):
         self.padding_idx = self.feature_indices_map["padding"]
         self.io_type_idx = self.feature_indices_map["io_type"]
 
+        # Add this as a class attribute
+        self.log_shift = 0.0  # Initialize
+
+        # Apply log transformation to labels if requested
+        if self.use_log_transform:
+            if log_shift is not None:
+                self.log_shift = log_shift
+                # Apply log transform with the provided shift
+                self.labels_np = np.log(self.labels_np + self.log_shift)
+            else:
+                self.labels_np = self._apply_log_transform(self.labels_np)
+
         # Calculate and store normalization statistics (mean and std) for both features and labels
         if stats:
             self.feature_means, self.feature_stds, self.label_means, self.label_stds = stats
@@ -93,6 +112,23 @@ class FPGAGraphDataset(Dataset):
                                  self.num_activation_types +
                                  self.num_padding_types)
         print(f"Processed node feature dimension will be: {self.node_feature_dim}")
+
+    def _apply_log_transform(self, labels):
+        """Apply log transformation to labels with epsilon to handle zeros/small values."""
+        min_val = np.min(labels)
+        if min_val <= 0:
+            print(f"Warning: Found non-positive values in labels (min: {min_val}). Adding shift.")
+            self.log_shift = self.log_epsilon + abs(min_val)
+        else:
+            self.log_shift = self.log_epsilon
+        
+        labels = labels + self.log_shift
+        log_labels = np.log(labels)
+        
+        print(f"Applied log transform with shift: {self.log_shift}")
+        print(f"Original range: [{np.min(labels-self.log_shift):.2e}, {np.max(labels-self.log_shift):.2e}]")
+        print(f"Log-transformed range: [{np.min(log_labels):.2f}, {np.max(log_labels):.2f}]")
+        return log_labels
 
     def _calculate_normalization_stats(self):
         """
@@ -186,7 +222,10 @@ class FPGAGraphDataset(Dataset):
             'feature_stds': self.feature_stds.numpy(),
             'label_means': self.label_means.numpy(),
             'label_stds': self.label_stds.numpy(),
-            'feature_keys': self.numerical_feature_keys
+            'feature_keys': self.numerical_feature_keys, # Added
+            'use_log_transform': self.use_log_transform, # Added
+            'log_epsilon': self.log_epsilon,
+            'log_shift': self.log_shift  # Added
         }
         
         np.save(filepath, stats_dict)
@@ -204,11 +243,25 @@ class FPGAGraphDataset(Dataset):
         
         print(f"Loaded statistics for features: {stats_dict['feature_keys']}")
         
-        return feature_means, feature_stds, label_means, label_stds
+        # Return transformation settings along with stats
+        use_log_transform = stats_dict.get('use_log_transform', False)
+        log_epsilon = stats_dict.get('log_epsilon', 1e-6)
+        log_shift = stats_dict.get('log_shift', log_epsilon)
+        
+        return feature_means, feature_stds, label_means, label_stds, use_log_transform, log_epsilon, log_shift
     
     def denormalize_labels(self, normalized_labels):
         """Denormalize labels using the stored statistics"""
-        return normalized_labels * self.label_stds + self.label_means
+        # First denormalize from z-score
+        denormalized = normalized_labels * self.label_stds + self.label_means
+        
+        # Then apply inverse log transform if it was used
+        if self.use_log_transform:
+            denormalized = torch.exp(denormalized) - self.log_shift  # Use log_shift instead of just epsilon
+            # Handle potential negative values from numerical precision
+            denormalized = torch.clamp(denormalized, min=0.0)
+        
+        return denormalized
 
     def get(self, idx):
         """Processes and returns a single graph data object for the given index."""
@@ -360,38 +413,52 @@ def create_dataloaders_from_split_data(
     test_features_path, test_labels_path,
     stats_load_path=None, stats_save_path=None,
     batch_size=32, num_workers=0, pin_memory=True,
-    mode ="gnn"
+    mode ="gnn", use_log_transform=False, log_epsilon=1e-6
 ):
     """
     Creates train, validation, and test DataLoaders from pre-split numpy arrays.
     Calculates normalization statistics from training data only.
-    
-    Args:
-        train_features_path (str): Path to training features .npy file
-        train_labels_path (str): Path to training labels .npy file
-        val_features_path (str): Path to validation features .npy file
-        val_labels_path (str): Path to validation labels .npy file
-        test_features_path (str): Path to test features .npy file
-        test_labels_path (str): Path to test labels .npy file
-        stats_load_path (str, optional): Path to load pre-calculated normalization stats
-        stats_save_path (str, optional): Path to save newly calculated normalization stats
-        batch_size (int): Batch size for DataLoaders
-        num_workers (int): Number of workers for DataLoader
-        pin_memory (bool): If True, DataLoaders will copy Tensors into CUDA pinned memory
-        
-    Returns:
-        tuple: (train_loader, val_loader, test_loader, node_feature_dim, num_targets)
     """
+    
+    # Initialize stats to None
+    stats = None
     
     # Handle normalization statistics
     if stats_load_path and os.path.exists(stats_load_path):
         print(f"Loading existing normalization stats from: {stats_load_path}")
-        stats = FPGAGraphDataset.load_normalization_stats(stats_load_path)
-        print("Successfully loaded normalization stats.")
+        loaded_stats = FPGAGraphDataset.load_normalization_stats(stats_load_path)
+        if len(loaded_stats) == 7:  # New format with log transform info and log_shift
+            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon, loaded_log_shift = loaded_stats
+            if loaded_use_log != use_log_transform:
+                print(f"Warning: Loaded log transform setting ({loaded_use_log}) differs from requested ({use_log_transform})")
+                print("Using requested setting and recalculating stats...")
+                stats = None
+            else:
+                stats = (feature_means, feature_stds, label_means, label_stds)
+                print("Successfully loaded normalization stats with log transform info.")
+        elif len(loaded_stats) == 6:  # Format without log_shift
+            feature_means, feature_stds, label_means, label_stds, loaded_use_log, loaded_epsilon = loaded_stats
+            if loaded_use_log != use_log_transform:
+                print(f"Warning: Loaded log transform setting ({loaded_use_log}) differs from requested ({use_log_transform})")
+                print("Using requested setting and recalculating stats...")
+                stats = None
+            else:
+                stats = (feature_means, feature_stds, label_means, label_stds)
+                print("Successfully loaded normalization stats with log transform info.")
+        else:  # Old format without log transform info
+            feature_means, feature_stds, label_means, label_stds = loaded_stats
+            print("Loaded old format stats. Recalculating for log transform compatibility...")
+            stats = None
     else:
+        stats = None  # Explicitly set to None if no stats file
+    
+    if stats is None:
         print("Calculating normalization statistics from training data...")
         # Create training dataset to calculate stats
-        train_dataset_temp = FPGAGraphDataset(train_features_path, train_labels_path, stats=None)
+        train_dataset_temp = FPGAGraphDataset(
+            train_features_path, train_labels_path, 
+            stats=None, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+        )
         stats = (train_dataset_temp.feature_means, train_dataset_temp.feature_stds,
                 train_dataset_temp.label_means, train_dataset_temp.label_stds)
         
@@ -400,11 +467,22 @@ def create_dataloaders_from_split_data(
             print(f"Saving normalization stats to: {stats_save_path}")
             train_dataset_temp.save_normalization_stats(stats_save_path)
 
+    # Continue with the rest of the function...
+
     # Create datasets with shared normalization statistics
     print("Creating datasets with shared normalization statistics...")
-    train_dataset = FPGAGraphDataset(train_features_path, train_labels_path, stats=stats)
-    val_dataset = FPGAGraphDataset(val_features_path, val_labels_path, stats=stats)
-    test_dataset = FPGAGraphDataset(test_features_path, test_labels_path, stats=stats)
+    train_dataset = FPGAGraphDataset(
+        train_features_path, train_labels_path, 
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+    )
+    val_dataset = FPGAGraphDataset(
+        val_features_path, val_labels_path, 
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+    )
+    test_dataset = FPGAGraphDataset(
+        test_features_path, test_labels_path, 
+        stats=stats, use_log_transform=use_log_transform, log_epsilon=log_epsilon
+    )
     
     # Get dataset info
     node_feature_dim = train_dataset.node_feature_dim
@@ -437,12 +515,6 @@ def create_dataloaders_from_split_data(
         num_workers=num_workers, 
         pin_memory=pin_memory
     )
-    
-    # Create datasets with shared normalization statistics
-    print("Creating datasets with shared normalization statistics...")
-    train_dataset = FPGAGraphDataset(train_features_path, train_labels_path, stats=stats)
-    val_dataset = FPGAGraphDataset(val_features_path, val_labels_path, stats=stats)
-    test_dataset = FPGAGraphDataset(test_features_path, test_labels_path, stats=stats)
 
     # Set the mode for each dataset instance
     train_dataset.mode = mode

@@ -18,9 +18,9 @@ def main():
     parser.add_argument("--arch", choices=["gnn", "transformer"], default="transformer", help="Architecture type")
     parser.add_argument("--eval-only", action="store_true", help="Only evaluate and plot, no training.")
     parser.add_argument("--model-path", type=str, default=None, help="Path to saved model checkpoint (for eval-only mode).")
-    parser.add_argument("--epochs", type=int, default=300, help="Number of epochs to train")
+    parser.add_argument("--epochs", type=int, default=2, help="Number of epochs to train")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--batch-size", type=int, default=1024, help="Batch size")
+    parser.add_argument("--batch-size", type=int, default=2048, help="Batch size")
     args = parser.parse_args()    
 
     timestamp = datetime.now().strftime("%m_%d_%H_%M")
@@ -28,6 +28,8 @@ def main():
     num_epochs = args.epochs
     learning_rate = args.lr
     BATCH_SIZE = args.batch_size
+    USE_LOG_TRANSFORM = True  # Set to True to enable log transformation
+    LOG_EPSILON = 1e-6       # Small value to add before log transform
 
     if args.eval_only:
         outdir = f"new_results_plots/testing_only_{timestamp}_{num_epochs}epochs_{learning_rate}lr_{BATCH_SIZE}bs"
@@ -61,6 +63,7 @@ def main():
     #         pin_memory=True if device.type == 'cuda' else False
     #     )
 
+## CHANGE BEFORE PUSH
     # base_dir = "../dataset/output/split_dataset/result/result/"  # UPDATE FOR THE JOB WITH NEW PATH
     base_dir = "/jason-pvc/june_wa-hls4ml/result/" # IN THE PVC
 
@@ -71,13 +74,15 @@ def main():
             val_labels_path=os.path.join(base_dir, "val_labels.npy"),
             test_features_path=os.path.join(base_dir, "test_features.npy"),
             test_labels_path=os.path.join(base_dir, "test_labels.npy"),
-            # stats_load_path=None,  # Will calculate from training data
-            stats_load_path=os.path.join(base_dir, "normalization_stats.npy"),
-            stats_save_path=os.path.join(base_dir, "normalization_stats.npy"),  # Save for future use
+            stats_load_path=None,  # Will calculate from training data
+            # stats_load_path=os.path.join(base_dir, "normalization_stats.npy"),
+            stats_save_path=os.path.join(base_dir, "lognormalization_stats.npy"),  # Save for future use
             batch_size=BATCH_SIZE,
             num_workers=4,
             pin_memory=True if device.type == 'cuda' else False,
-            mode=args.arch # different than Dataset2.py bc now already split and preprocessed
+            mode=args.arch, # different than Dataset2.py bc now already split and preprocessed
+            use_log_transform=USE_LOG_TRANSFORM,  # Add this line
+            log_epsilon=LOG_EPSILON                # Add this line
         )
 
     # Set mode on datasets!
@@ -122,6 +127,40 @@ def main():
     # After obtaining y_true_denorm and y_pred_denorm:
     metrics_per_feature = calculate_metrics_per_feature(y_true_denorm, y_pred_denorm, output_features)
 
+    # ADDITION
+    # Load test input features to get model types for coloring
+    test_features_np = np.load(os.path.join(base_dir, "test_features.npy"))  # (num_samples, max_layers, num_features)
+
+    # # Extract strategies for each model (0: latency, 1: resource)
+    # def get_strategies(features_np):
+    #     strategies = []
+    #     for model in features_np:
+    #         for layer in model:
+    #             if not np.all(layer == -1):
+    #                 strategies.append(int(layer[8]))  # 0=latency, 1=resource
+    #                 break
+    #         else:
+    #             strategies.append(None)  # Handle fully padded model if ever
+    #     return strategies
+
+    # test_strategies = get_strategies(test_features_np)
+
+    def get_model_types(features_np):
+        model_types = []
+        for model in features_np:
+            valid_layers = [layer for layer in model if not np.all(layer == -1)]
+            layer_types = [int(layer[9]) for layer in valid_layers] # model_type is the 9th index
+            if any(lt == 2 for lt in layer_types):
+                model_types.append('Conv1D')
+            elif any(lt == 3 for lt in layer_types):
+                model_types.append('Conv2D')
+            else:
+                model_types.append('Dense')
+        return model_types
+
+    test_model_types = get_model_types(test_features_np)
+    # END ADDITION
+
     plot_box_plots_symlog(y_pred_denorm, y_true_denorm, folder_name=outdir)
     plot_results_simplified(
         name="run1",
@@ -129,10 +168,15 @@ def main():
         y_test=y_true_denorm,
         y_pred=y_pred_denorm,
         output_features=output_features,
-        folder_name=outdir
+        folder_name=outdir,
+        model_types=test_model_types # , ADDED
+        # strategies=test_strategies # ADDED
     )
 
 if __name__ == "__main__":
     main()
 
 # nohup python run.py --arch transformer > new_logs/output1.log 2>&1 &
+
+# # example of inference only:
+# python run.py --arch transformer --eval-only --model-path new_results_plots/06_02_17_45_20epochs_0.0001lr_1024bs/best_model/model.pt
