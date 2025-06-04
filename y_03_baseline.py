@@ -36,7 +36,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 
 
 # Training configuration
-BATCH_SIZE = 2048
+BATCH_SIZE = 1024
 LEARNING_RATE = 3e-3
 NUM_EPOCHS = 2 #TODO: fix this to 1000
 WEIGHT_DECAY = 5e-6

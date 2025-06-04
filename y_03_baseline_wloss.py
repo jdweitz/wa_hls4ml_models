@@ -15,7 +15,7 @@ from Utils import generate_all_plots, calculate_metrics, save_metrics_to_file, M
 
 
 #!!!!!! CHANGE THIS FOLDER NAME TO YOUR OWN FOLDER NAME !!!!!!!#
-SAVE_FOLDERNAME = 'results/y_03_baseline'
+SAVE_FOLDERNAME = 'results/y_03_baseline_wloss'
 # CHANGE THIS FOLDER NAME TO YOUR OWN FOLDER NAME !!!!!!!#
 
 # Extract the part after the first '/' for folder_base
@@ -36,7 +36,7 @@ TEST_LABELS_PATH = os.path.join(image_data_path, 'test_labels.npy')
 
 
 # Training configuration
-BATCH_SIZE = 2048
+BATCH_SIZE = 1024
 LEARNING_RATE = 3e-3
 NUM_EPOCHS = 1500
 WEIGHT_DECAY = 5e-6
@@ -275,7 +275,7 @@ def train_gatv2_gnn(output_dir='results/GATv2_results'):
         patience=8,
         min_lr=1e-7,
         verbose=True,
-        threshold=1e-4,
+        threshold=1e-5,
         cooldown=3
     )
 
