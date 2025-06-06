@@ -18,9 +18,9 @@ def main():
     parser.add_argument("--arch", choices=["gnn", "transformer"], default="transformer", help="Architecture type")
     parser.add_argument("--eval-only", action="store_true", help="Only evaluate and plot, no training.")
     parser.add_argument("--model-path", type=str, default=None, help="Path to saved model checkpoint (for eval-only mode).")
-    parser.add_argument("--epochs", type=int, default=2, help="Number of epochs to train")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--batch-size", type=int, default=2048, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=200, help="Number of epochs to train")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
+    parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
     args = parser.parse_args()    
 
     timestamp = datetime.now().strftime("%m_%d_%H_%M")
@@ -64,8 +64,8 @@ def main():
     #     )
 
 ## CHANGE BEFORE PUSH
-    # base_dir = "../dataset/output/split_dataset/result/result/"  # UPDATE FOR THE JOB WITH NEW PATH
-    base_dir = "/jason-pvc/june_wa-hls4ml/result/" # IN THE PVC
+    base_dir = "../dataset/output/split_dataset/result/result/"  # UPDATE FOR THE JOB WITH NEW PATH
+    # base_dir = "/jason-pvc/june_wa-hls4ml/result/" # IN THE PVC
 
     train_loader, val_loader, test_loader, node_feature_dim, num_targets = create_dataloaders_from_split_data(
             train_features_path=os.path.join(base_dir, "train_features.npy"),

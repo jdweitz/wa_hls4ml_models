@@ -198,45 +198,133 @@ def plot_results_simplified(name, mpl_plots, y_test, y_pred, output_features, fo
     colors = ['pink']
     # colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'orange']
 
+    # if mpl_plots:
+    #     plt.rcParams.update({"font.size": 24})
+    #     for i, feature in enumerate(output_features):
+    #         plt.figure(figsize=(8, 6))
+    #         if model_types is not None:
+    #             unique_types = ['Dense', 'Conv1D', 'Conv2D']
+    #             for t in unique_types:
+    #                 idxs = [j for j, mt in enumerate(model_types) if mt == t]
+    #                 if len(idxs) == 0:
+    #                     continue
+    #                 plt.scatter(
+    #                     y_test[idxs, i],
+    #                     y_pred[idxs, i],
+    #                     s=10,
+    #                     label=t,
+    #                     color=type_color_map.get(t, 'gray'),
+    #                     alpha=0.75,
+    #                     marker='o',   # Use '.' or ',' for tiny fast dots
+    #                 )
+    #         else:
+    #             plt.scatter(
+    #                 y_test[:, i], y_pred[:, i],
+    #                 s=20, label=feature, color=colors[i % len(colors)], alpha=0.7
+    #             )
+
+    #         plt.title('Actual vs Predicted for ' + feature)
+    #         plt.xlabel('Actual Value')
+    #         plt.ylabel('Predicted Value')
+    #         plt.xscale('log')
+    #         plt.yscale('log')
+    #         plt.legend()
+    #         vmin = min(np.min(y_test[:, i]), np.min(y_pred[:, i]))
+    #         vmax = max(np.max(y_test[:, i]), np.max(y_pred[:, i]))
+    #         plt.plot([vmin, vmax], [vmin, vmax], 'r--')
+    #         plt.tight_layout()
+    #         directory = os.path.join(folder_name, "plots")
+    #         if not os.path.exists(directory):
+    #             os.makedirs(directory)
+    #         plt.savefig(os.path.join(directory, feature + '_predicted_vs_true.png'))
+    #         plt.close()
+
     if mpl_plots:
-        for i, feature in enumerate(output_features):
-            plt.figure(figsize=(8, 6))
+        plt.rcParams.update({"font.size": 24})
+        # Desired order: BRAM, DSP, FF, LUT, CYCLES, INTERVAL (not II)
+        desired_order = [3, 4, 1, 2, 0, 5]  # Indices for your arrays: BRAM, DSP, FF, LUT, CYCLES, II
+        label_names = ['BRAM', 'DSP', 'FF', 'LUT', 'CYCLES', 'INTERVAL']
+
+        num_plots = len(desired_order)
+        num_y = int(np.sqrt(num_plots))
+        num_x = int(np.ceil(np.sqrt(num_plots)))
+        fig, axes = plt.subplots(num_y, num_x, figsize=(6 * num_x, 10))
+        axes = np.reshape(axes, -1)
+        fig.subplots_adjust(hspace=0.35, wspace=0.35)
+        unique_types = ['Dense', 'Conv1D', 'Conv2D']
+
+        legend_handles = []
+
+        for plot_idx, (array_idx, label) in enumerate(zip(desired_order, label_names)):
+            ax_pred = axes[plot_idx]
+            actual = []
+            predicted = []
             if model_types is not None:
-                unique_types = ['Dense', 'Conv1D', 'Conv2D']
                 for t in unique_types:
                     idxs = [j for j, mt in enumerate(model_types) if mt == t]
                     if len(idxs) == 0:
                         continue
-                    plt.scatter(
-                        y_test[idxs, i],
-                        y_pred[idxs, i],
-                        s=10,
+                    actual_vals = y_test[idxs, array_idx]
+                    pred_vals = y_pred[idxs, array_idx]
+                    actual.extend(actual_vals)
+                    predicted.extend(pred_vals)
+                    scatter = ax_pred.scatter(
+                        actual_vals,
+                        pred_vals,
+                        alpha=0.6,
                         label=t,
-                        color=type_color_map.get(t, 'gray'),
-                        alpha=0.75,
-                        marker='o',   # Use '.' or ',' for tiny fast dots
+                        s=20,
                     )
+                    if plot_idx == 0:
+                        legend_handles.append(scatter)
             else:
-                plt.scatter(
-                    y_test[:, i], y_pred[:, i],
-                    s=20, label=feature, color=colors[i % len(colors)], alpha=0.7
+                actual = y_test[:, array_idx]
+                predicted = y_pred[:, array_idx]
+                scatter = ax_pred.scatter(
+                    actual,
+                    predicted,
+                    alpha=0.7,
+                    s=20,
+                    label=label,
                 )
+                if plot_idx == 0:
+                    legend_handles.append(scatter)
 
-            plt.title('Actual vs Predicted for ' + feature)
-            plt.xlabel('Actual Value')
-            plt.ylabel('Predicted Value')
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.legend()
-            vmin = min(np.min(y_test[:, i]), np.min(y_pred[:, i]))
-            vmax = max(np.max(y_test[:, i]), np.max(y_pred[:, i]))
-            plt.plot([vmin, vmax], [vmin, vmax], 'r--')
-            plt.tight_layout()
-            directory = os.path.join(folder_name, "plots")
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            plt.savefig(os.path.join(directory, feature + '_predicted_vs_true.png'))
-            plt.close()
+            # Diagonal perfect prediction line
+            if len(actual) > 0 and len(predicted) > 0:
+                minval = min(np.min(actual), np.min(predicted))
+                maxval = max(np.max(actual), np.max(predicted))
+                ax_pred.plot([minval, maxval], [minval, maxval], color="red")
+            ax_pred.set_xlabel(f"Actual {label}")
+            ax_pred.set_ylabel(f"Predicted {label}")
+            ax_pred.set_xscale("log")
+            ax_pred.set_yscale("log")
+
+        # Remove unused axes
+        for i in range(num_plots, len(axes)):
+            fig.delaxes(axes[i])
+
+        legend_title = "Architecture" if model_types is not None else "Feature"
+        legend = fig.legend(
+            handles=legend_handles,
+            title=legend_title,
+            loc="upper right",
+            bbox_to_anchor=(0.5, 1.08),
+            fontsize=18,
+            ncol=len(legend_handles),
+        )
+        title = f"Transformer Prediction Analysis on Test Set"
+        suptitle = fig.suptitle(title, fontsize=28, x=0.5, y=1.125)
+        directory = os.path.join(folder_name, "plots")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        fig.savefig(
+            os.path.join(directory, f"{name}_predicted_vs_true_grid.png"),
+            dpi=300,
+            bbox_extra_artists=(suptitle, legend),
+            bbox_inches="tight",
+        )
+        plt.close(fig)
 
     # Interactive plotly subplots
     n_features = len(output_features)
