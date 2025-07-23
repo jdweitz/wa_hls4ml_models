@@ -28,14 +28,16 @@ class FPGAGraphDataset(Dataset):
             "prec": 6, "rf": 7, "strategy": 8,
             "layer_type": 9, "activation_type": 10,
             "filters": 11, "kernel_size": 12,
-            "stride": 13, "padding": 14, "pooling": 15
+            "stride": 13, "padding": 14, "pooling": 15,
+            "batchnorm": 16, "io_type": 17
         }
 
         # Define numerical feature keys
         self.numerical_feature_keys = [
             "d_in1", "d_in2", "d_in3", "d_out1", "d_out2", "d_out3",
-            "prec", "rf", "filters", "kernel_size", "stride", "pooling"
+            "prec", "rf", "filters", "kernel_size", "stride", "pooling" #Jason had batchnorm and io_type here this is wrong
         ]
+
         # Get integer indices for numerical features
         self.numerical_feature_indices = torch.tensor(
             [self.feature_indices_map[k] for k in self.numerical_feature_keys], dtype=torch.long
@@ -47,7 +49,7 @@ class FPGAGraphDataset(Dataset):
             'activation': 0, 'QDense': 1, 'QConv1D': 2, 'QConv2D': 3,
             'QSeparableConv1D': 4, 'QSeparableConv2D': 5, 'QDepthwiseConv1D': 6, 'QDepthwiseConv2D': 7,
             'Flatten': 8, 'MaxPooling1D': 9, 'MaxPooling2D': 9,
-            'AveragePooling1D': 10, 'AveragePooling2D': 10
+            'AveragePooling1D': 10, 'AveragePooling2D': 10, 'BatchNormalization': 11
         }
         self.activation_mapping_provided = { 
             'NA': 0, 'linear': 1, 'quantized_relu': 2, 'quantized_tanh': 3,
@@ -56,17 +58,24 @@ class FPGAGraphDataset(Dataset):
         self.padding_mapping_provided = {
             'NA': 0, 'valid': 1, 'same': 2,
         }
+        self.io_type_mapping_provided = {
+            'io_parallel': 0, 'io_stream': 1,
+        }
+
 
         # Get the number of unique categorical values
         self.num_layer_types = len(set(self.layer_type_mapping_provided.values())) # Should be 11 (0-10)
         self.num_activation_types = len(self.activation_mapping_provided)        # Should be 6 (0-5)
         self.num_padding_types = len(self.padding_mapping_provided)   # Should be 3 (0-2)
+        self.num_io_types = len(self.io_type_mapping_provided)  # Should be 2 (0-1)
 
         # Specific indices for easier access
         self.strategy_idx = self.feature_indices_map["strategy"]
         self.layer_type_idx = self.feature_indices_map["layer_type"]
         self.activation_type_idx = self.feature_indices_map["activation_type"]
         self.padding_idx = self.feature_indices_map["padding"]
+        self.io_type_idx = self.feature_indices_map["io_type"]  # Add this for io_type access
+
 
         # Calculate and store normalization statistics (mean and std) for both features and labels
         if stats:
@@ -84,7 +93,8 @@ class FPGAGraphDataset(Dataset):
         self.node_feature_dim = (self.num_numerical_features +
                                  self.num_layer_types +
                                  self.num_activation_types +
-                                 self.num_padding_types)
+                                 self.num_padding_types +
+                                    self.num_io_types)
         print(f"Processed node feature dimension will be: {self.node_feature_dim}")
 
 
@@ -245,67 +255,69 @@ class FPGAGraphDataset(Dataset):
             valid_layer_original_indices.append(i) # Store original index of this valid layer
             
             # 1. Numerical Features
-            # Extract raw numerical features for this layer
             current_numerical_feats_raw = torch.from_numpy(
                 layer_data_raw[self.numerical_feature_indices.numpy()]
             ).float()
 
-            # Normalize. Handle -1s if they mean "not applicable" for a specific numerical feature
-            # by treating them as 0 for normalization purposes: (0 - mean) / std.
             numerical_feats_processed = torch.zeros_like(current_numerical_feats_raw)
             for j in range(self.num_numerical_features):
                 val = current_numerical_feats_raw[j]
-                if val == -1.0: # If -1 signifies 'not applicable' for this specific numerical feature
-                    # Normalize 0.0 instead. This means "not applicable" maps to a specific value relative to the distribution.
+                if val == -1.0:
                     numerical_feats_processed[j] = (0.0 - self.feature_means[j]) / self.feature_stds[j]
                 else:
                     numerical_feats_processed[j] = (val - self.feature_means[j]) / self.feature_stds[j]
             
-            # 2. Categorical Features (One-Hot Encoded)
-            # Values are assumed to be integer codes already present in the numpy array.
+            # 2. Categorical Features (One-Hot Encoded) - REMOVE io_type from here
             layer_type_val = layer_data_raw[self.layer_type_idx]
             activation_type_val = layer_data_raw[self.activation_type_idx]
             padding_val = layer_data_raw[self.padding_idx]
+            # io_type_val = layer_data_raw[self.io_type_idx]  # REMOVE THIS LINE
 
             ohe_layer_type = self._one_hot_encode(layer_type_val, self.num_layer_types)
             ohe_activation_type = self._one_hot_encode(activation_type_val, self.num_activation_types)
             ohe_padding = self._one_hot_encode(padding_val, self.num_padding_types)
+            # ohe_io_type = self._one_hot_encode(io_type_val, self.num_io_types)  # REMOVE THIS LINE
 
-            # Concatenate all processed features for the current node
+            # Concatenate node features (WITHOUT io_type)
             current_node_features = torch.cat([
                 numerical_feats_processed,
                 ohe_layer_type,
                 ohe_activation_type,
                 ohe_padding
+                # ohe_io_type  # REMOVE THIS LINE
             ], dim=0)
             node_features_list.append(current_node_features)
 
         
-        x = torch.stack(node_features_list) # Stack all valid node feature tensors
-        # Global graph feature: strategy (binary 0 or 1)
-        # Taken from the first valid layer found. Assumed to be consistent for the graph.
+        x = torch.stack(node_features_list)
+        
+        # Global graph features: strategy AND io_type (both one-hot encoded)
         first_valid_layer_data = model_features_raw[valid_layer_original_indices[0]]
         strategy_val = int(first_valid_layer_data[self.strategy_idx])
+        io_type_val = int(first_valid_layer_data[self.io_type_idx])
+        
+        # One-hot encode global features
+        strategy_ohe = self._one_hot_encode(strategy_val, 2)  # 2 classes: latency(0), resource(1)
+        io_type_ohe = self._one_hot_encode(io_type_val, self.num_io_types)  # 2 classes: parallel(0), stream(1)
 
-        # Edges: Layer i -> Layer i+1 for the sequence of valid layers found
+        # Edges
         num_valid_nodes = x.shape[0]
         if num_valid_nodes > 1:
-            # Edges are sequential between the valid nodes identified
             source_nodes = torch.arange(0, num_valid_nodes - 1, dtype=torch.long)
             target_nodes = torch.arange(1, num_valid_nodes, dtype=torch.long)
             edge_index = torch.stack([source_nodes, target_nodes], dim=0)
         else:
-            # No edges if 0 or 1 node
             edge_index = torch.empty((2, 0), dtype=torch.long)
         
-        # Labels (graph-level targets)
+       # Labels
         labels_tensor = torch.tensor(model_labels, dtype=torch.float)
         normalized_labels = (labels_tensor - self.label_means) / self.label_stds
-        y = normalized_labels.unsqueeze(0) # Ensures shape [1, num_targets]
+        y = normalized_labels.unsqueeze(0)
 
-        # Create PyG Data object
+        # Create PyG Data object with one-hot encoded global features
         data = Data(x=x, edge_index=edge_index, y=y)
-        data.strategy = torch.tensor([strategy_val], dtype=torch.float).unsqueeze(1)
+        data.strategy = strategy_ohe.unsqueeze(0)  # Shape: [1, 2]
+        data.io_type = io_type_ohe.unsqueeze(0)   # Shape: [1, 2]
 
         return data
 

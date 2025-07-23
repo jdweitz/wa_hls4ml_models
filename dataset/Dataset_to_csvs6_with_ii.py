@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 # Constants
 INDEPENDENT_LAYER_NAMES = [
-    'QConv2D', 'QDense', 'QConv1D', 'MaxPooling2D', 'MaxPooling1D', 
+    'Dense', 'QConv2D', 'QDense', 'QConv1D', 'MaxPooling2D', 'MaxPooling1D', 
     'AveragePooling2D', 'AveragePooling1D', 'Flatten', 'QDepthwiseConv2D', 
     'QDepthwiseConv1D', 'QSeparableConv2D', 'QSeparableConv1D',
-    'Activation', 'QActivation'  # Added activation layers
+    'Activation', 'QActivation',  # Added activation layers
+    'BatchNormalization' # added for the 2-20layer models
 ]
 
 
@@ -30,6 +31,7 @@ INDEPENDENT_LAYER_NAMES = [
 LAYER_TYPE_MAPPING = {
     'activation': 0,
     'QConv2D': 3,
+    'Dense': 1, # added
     'QDense': 1,
     'QConv1D': 2,
     'MaxPooling2D': 9,
@@ -42,7 +44,8 @@ LAYER_TYPE_MAPPING = {
     'QSeparableConv2D': 5,
     'QSeparableConv1D': 4,
     'Activation': 0,
-    'QActivation': 0
+    'QActivation': 0,
+    'BatchNormalization': 11 # added bn for the 2-20layer models
 }
 
 # Strategy mapping: latency=0, resource=1
@@ -54,8 +57,11 @@ STRATEGY_MAPPING = {
 ACTIVATION_MAPPING = {
     'NA': 0, # Represents non-activation layers
     'linear': 1,
+    'relu': 2,
     'quantized_relu': 2,
+    'tanh': 3,
     'quantized_tanh': 3,
+    'sigmoid': 4,
     'quantized_sigmoid': 4,
     'quantized_softmax': 5
 }
@@ -77,14 +83,20 @@ FEATURES = {
     "kernel_size": 12,
     "stride": 13,
     "padding": 14,
-    "pooling": 15
-
+    "pooling": 15,
+    "batchnorm": 16, # added bn for 2-20layer models
+    "io_type": 17 # added (either io_parallel:0 or io_stream:1)
 }
 
 PADDING_MAPPING = {
     'NA': 0,
     'valid': 1,
     'same': 2,
+}
+
+IO_TYPE_MAPPING = {
+    'io_parallel': 0,
+    'io_stream': 1,
 }
 
 
@@ -109,8 +121,6 @@ class ModelProcessor:
         # Define label columns for resource metrics
         # self.label_columns = ["cycles_max", "ff", "lut", "bram", "dsp"]
         self.label_columns = ["cycles_max", "ff", "lut", "bram", "dsp", "interval_max"]
-        
-
     
     def has_valid_resource_report(self, file_path: str) -> bool:
         """Quickly check if a JSON file contains non-empty resource report.
@@ -137,9 +147,16 @@ class ModelProcessor:
             
             # If pattern found, fully parse to verify it's not empty
             import json
-            data = json.loads(content)
+            # data = json.loads(content)
             
-            # Get hls_resource_report which has the actual resource metrics
+            # # Get hls_resource_report which has the actual resource metrics
+            # hls_resource_report = data.get('hls_resource_report', {})
+            
+            data = json.loads(content)
+            if isinstance(data, list):
+                if len(data) == 0:
+                    return False
+                data = data[0]
             hls_resource_report = data.get('hls_resource_report', {})
             
             # Check if it has at least one of the expected fields with non-empty string values
@@ -167,35 +184,83 @@ class ModelProcessor:
             file_path: Path to the JSON file
             
         Returns:
-            Dictionary containing the JSON data
+            Dictionary containing the JSON data. If the root is a list, returns the first element.
         """
         try:
             with open(file_path, 'r') as file:
-                return json.load(file)
-        except (IOError, json.JSONDecodeError) as e:
+                data = json.load(file)
+                if isinstance(data, list): # need to parse list for the 2-20layer models
+                    if len(data) == 0:
+                        raise ValueError(f"JSON file {file_path} contains an empty list.")
+                    data = data[0]
+                return data
+        except (IOError, json.JSONDecodeError, ValueError) as e:
             logger.error(f"Error loading JSON file {file_path}: {e}")
             raise
-    
-    def get_resource_report(self, data: Dict) -> Dict[str, int]:
-        """Extract resource usage information from the data.
+
+    # def load_json(self, file_path: str) -> Dict:
+    #     """Load a JSON file and return its contents as a dictionary.
         
-        Args:
-            data: Dictionary containing the model data
+    #     Args:
+    #         file_path: Path to the JSON file
             
-        Returns:
-            Dictionary with resource metrics
-        """
+    #     Returns:
+    #         Dictionary containing the JSON data
+    #     """
+    #     try:
+    #         with open(file_path, 'r') as file:
+    #             return json.load(file)
+    #     except (IOError, json.JSONDecodeError) as e:
+    #         logger.error(f"Error loading JSON file {file_path}: {e}")
+    #         raise
+    
+    # def get_resource_report(self, data: Dict) -> Dict[str, int]:
+    #     """Extract resource usage information from the data.
+        
+    #     Args:
+    #         data: Dictionary containing the model data
+            
+    #     Returns:
+    #         Dictionary with resource metrics
+    #     """
+    #     lat = data.get("latency_report", {})
+    #     hls_res = data.get("hls_resource_report", {})
+
+        
+    #     return {
+    #         "cycles_max": int(lat.get("cycles_max", 0)),
+    #         "ff": int(hls_res.get("ff", 0)),
+    #         "lut": int(hls_res.get("lut", 0)),
+    #         "bram": float(hls_res.get("bram", 0)),
+    #         "dsp": int(hls_res.get("dsp", 0)),
+    #         "interval_max": int(lat.get("interval_max", 0))
+    #     }
+
+    # To properly extract ints or floats:
+    def get_resource_report(self, data: Dict) -> Dict[str, int]:
+        """Extract resource usage information from the data."""
         lat = data.get("latency_report", {})
         hls_res = data.get("hls_resource_report", {})
 
-        
+        def to_int(val):
+            try:
+                return int(float(val))
+            except Exception:
+                return 0
+
+        def to_float(val):
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
+
         return {
-            "cycles_max": int(lat.get("cycles_max", 0)),
-            "ff": int(hls_res.get("ff", 0)),
-            "lut": int(hls_res.get("lut", 0)),
-            "bram": float(hls_res.get("bram", 0)),
-            "dsp": int(hls_res.get("dsp", 0)),
-            "interval_max": int(lat.get("interval_max", 0))
+            "cycles_max": to_int(lat.get("cycles_max", 0)),
+            "ff": to_int(hls_res.get("ff", 0)),
+            "lut": to_int(hls_res.get("lut", 0)),
+            "bram": to_int(hls_res.get("bram", 0)),  # or to_float if you expect fractions
+            "dsp": to_int(hls_res.get("dsp", 0)),
+            "interval_max": to_int(lat.get("interval_max", 0))
         }
     
     def get_layers(self, data: Dict) -> Tuple[List[str], List[int]]:
@@ -278,6 +343,13 @@ class ModelProcessor:
         # Process by layer type
         class_name = model_info.get('class_name', '')
         
+        # added for bn below
+        if class_name == "BatchNormalization":
+            layer_info[self.feature_index['batchnorm']] = 1
+        else:
+            layer_info[self.feature_index['batchnorm']] = 0
+        # added for bn above
+
         # Handle activation layers
         if class_name in ('Activation', 'QActivation'):
             # Set layer type to 0 for activation layers
@@ -411,17 +483,59 @@ class ModelProcessor:
         
         return input_features, resource_report
     
-    def _process_hls_config(self, data: Dict, input_features: pd.DataFrame) -> None:
-        """Process HLS configuration data and update the features DataFrame.
+    # def _process_hls_config(self, data: Dict, input_features: pd.DataFrame) -> None:
+    #     """Process HLS configuration data and update the features DataFrame.
         
-        Args:
-            data: Dictionary containing the model data
-            input_features: DataFrame to update with HLS configuration
-        """
+    #     Args:
+    #         data: Dictionary containing the model data
+    #         input_features: DataFrame to update with HLS configuration
+    #     """
+    #     hls_config = data.get('hls_config', {})
+    #     model_config = hls_config.get('Model', {})
+    #     layer_configs = hls_config.get('LayerName', {}
+
+    def _process_hls_config(self, data: Dict, input_features: pd.DataFrame) -> None:
         hls_config = data.get('hls_config', {})
         model_config = hls_config.get('Model', {})
         layer_configs = hls_config.get('LayerName', {})
-    
+
+        # --- ALWAYS SET IO_TYPE FIRST ---
+        global_io_type = hls_config.get('io_type', None)
+        if global_io_type is not None:
+            io_type_val = IO_TYPE_MAPPING.get(global_io_type, -1)
+        else:
+            # Infer io_type based on model layers if not present
+            model_layers = data.get('model_config', [])
+            has_conv = any(
+                l.get('class_name', '').lower() in [
+                    'qconv1d', 'qconv2d', 'conv1d', 'conv2d',
+                    'qdepthwiseconv1d', 'qdepthwiseconv2d',
+                    'qseparableconv1d', 'qseparableconv2d'
+                ] for l in model_layers
+            )
+            inferred_io_type = 'io_stream' if has_conv else 'io_parallel'
+            io_type_val = IO_TYPE_MAPPING[inferred_io_type]
+        # Set for all rows
+        input_features.loc[:, 'io_type'] = io_type_val
+
+        # Continue as before...
+        if not layer_configs or len(layer_configs) == 0:
+            # Get global precision, reuse factor, and strategy from model_config
+            global_prec = model_config.get('Precision', None)
+            global_rf = model_config.get('ReuseFactor', None)
+            global_strategy = model_config.get('Strategy', 'latency')
+
+            # parse ap_fixed type (like 'ap_fixed<8,4>' -> 8,4 or just 'ap_fixed<8,4>')
+            if isinstance(global_prec, dict):
+                global_prec = global_prec.get('weight', None)
+
+            # Set values for all rows in input_features
+            if global_prec is not None:
+                input_features['prec'] = self.parse_weight_string(global_prec)
+            if global_rf is not None:
+                input_features['rf'] = global_rf
+            input_features['strategy'] = STRATEGY_MAPPING.get(str(global_strategy).lower(), 0)
+            return  
         
         # Filter out non-layer configs
         layer_configs_new = {
@@ -633,6 +747,8 @@ class ModelProcessor:
             except Exception as e:
                 logger.error(f"Error processing file {file_path}: {e}")
                 continue
+
+    ## Takes ~30min to process 600,000+ with the code above, can try the below for speedup (need to install stuff for it still, and have not yet tried)
         
         logger.info(f"Found {len(valid_files)} files with valid resource reports")
         
@@ -802,14 +918,43 @@ if __name__ == "__main__":
     #     "./May_14_full_data/conv2d_may14/"
 
     # ]
-    folder_paths = [
-        "./May_14_full_data/may15_conv_ii/conv1d/",
-        "./May_14_full_data/2layer/",
-        "./May_14_full_data/3layer/",
-        "./May_14_full_data/may15_conv_ii/conv2d/",
+    # folder_paths = [
+    #     "./May_14_full_data/may15_conv_ii/conv1d/",
+    #     "./May_14_full_data/2layer/",
+    #     "./May_14_full_data/3layer/",
+    #     "./May_14_full_data/may15_conv_ii/conv2d/",
 
+    # ]
+    # output_dir = "./May_15_processed/"
+
+    # folder_paths = [
+    #     "testing"
+    # ]
+
+    folder_paths = [
+        #"2_20/",
+        #"2layer/2layer",
+        # "3layer_fixed/3layer_run_vsynth_2023-2_updated",
+        #"3layer_fixed/3layer",
+        "conv/conv1d/",
+        "conv/conv2d/",
+        #"strategy/latency",
+        #"strategy/resource"
     ]
-    output_dir = "./May_15_processed/"
+
+    # folder_paths = [
+    #     "2_20/",
+    #     "2layer/2layer",
+    #     # "3layer_fixed/3layer_run_vsynth_2023-2_updated",
+    #     "3layer_fixed/3layer",
+    #     "conv/conv1d/",
+    #     "conv/conv2d/",
+    #     "strategy/latency",
+    #     "strategy/resource"
+    # ]
+    # output_dir = "./May_28_processed_newest_dataset_with_iotype_latency_only/"
+
+    output_dir = "output/May_29_CONV_ONLY/"
     
     # Process folders and save combined numpy arrays (skip CSV files)
     X_path, y_path = processor.process_folders(
@@ -819,7 +964,7 @@ if __name__ == "__main__":
         save_csv=False
     )
     
-    # print(f"Combined data saved to {X_path} and {y_path}")
+    print(f"Combined data saved to {X_path} and {y_path}")
     
     # # Or, process folders and also save individual CSV files
     # X_path, y_path = processor.process_folders(

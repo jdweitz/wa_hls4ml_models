@@ -8,4 +8,24 @@ __pycache__/
 # Ignore output/plots/logs folders
 plots/
 logs/
+new_logs/
 results/
+results_and_plots/
+new_results_plots/
+
+conv_without_filters/
+output/
+runs/
+testing/
+
+# Ignore datasets
+2_20/
+2layer/
+3layer/
+3layer_fixed/
+all/
+conv/
+strategy/
+
+.vscode/
+
